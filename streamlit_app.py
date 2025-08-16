@@ -659,7 +659,7 @@ def admin_actions():
     if st.session_state.user_role == "admin":
         st.sidebar.markdown("---")
         st.sidebar.title("Admin Actions")
-
+        
         # --- Download All Data (CSV only) ---
         df_for_download = st.session_state.contacts_df.copy()
 
@@ -695,134 +695,143 @@ def admin_actions():
             help="Downloads all contact data, including Base64 encoded profile pictures and change history."
         )
 
+        # --- Manual Add Contact button (moved to top of admin section) ---
+        if st.sidebar.button("Add New Contact (Single)"):
+            st.session_state.show_add_form = True
+            st.rerun()
+        st.sidebar.caption("For bulk upload, download template below")
+        
         st.sidebar.markdown("---")
-        st.sidebar.subheader("Upload Bulk Contacts")
-
-        # --- Download Template (CSV only) ---
-        # Create a blank DataFrame with just the EXPECTED_COLUMNS
-        template_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
-        # Drop columns that are typically not filled in by user for template
-        template_df = template_df.drop(columns=["Photo", "Last Updated By", "Last Updated On", "History"], errors='ignore')
         
-        # Add some example values to guide the user (optional, but very helpful)
-        example_row = {
-            "Name": "John Doe",
-            "Designation": "Software Engineer",
-            "Country": "Singapore",
-            "Company": "Tech Solutions",
-            "Phone Number": "6512345678",
-            "Office Number": "6587654321",
-            "Email Address": "john.doe@example.com",
-            "Posting Date": "YYYY-MM-DD", # Guide for date format
-            "Deposted Date": "YYYY-MM-DD (optional)",
-            "Office Address": "1 Tech Park Drive",
-            "Home Address": "123 Main Street",
-            "Hobbies": "Reading, Hiking",
-            "Dietary Restrictions": "None",
-            "Festivities": "Chinese New Year, Christmas",
-            "Vehicle": "Car",
-            "Golf": "Yes",
-            "Golf Handicap": "18",
-            "Reception": "NYR, ALSE",
-            "Marital Status": "Single",
-            "Children (Son)": "0",
-            "Children (Daughter)": "0",
-            "Status": "Active", # Guide for expected values
-            "Tiering": "A",
-            "Category": "Local Rep"
-        }
-        # Append the example row to the template
-        template_df = pd.concat([template_df, pd.DataFrame([example_row])], ignore_index=True)
+        # --- Download Template within an expander ---
+        with st.sidebar.expander("Download Template"):
+            st.write("Download a CSV template to fill in new contact data.")
+            # Create a blank DataFrame with just the EXPECTED_COLUMNS
+            template_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
+            # Drop columns that are typically not filled in by user for template
+            template_df = template_df.drop(columns=["Photo", "Last Updated By", "Last Updated On", "History"], errors='ignore')
+            
+            # Add some example values to guide the user (optional, but very helpful)
+            example_row = {
+                "Name": "John Doe",
+                "Designation": "Software Engineer",
+                "Country": "Singapore",
+                "Company": "Tech Solutions",
+                "Phone Number": "6512345678",
+                "Office Number": "6587654321",
+                "Email Address": "john.doe@example.com",
+                "Posting Date": "YYYY-MM-DD", # Guide for date format
+                "Deposted Date": "YYYY-MM-DD (optional)",
+                "Office Address": "1 Tech Park Drive",
+                "Home Address": "123 Main Street",
+                "Hobbies": "Reading, Hiking",
+                "Dietary Restrictions": "None",
+                "Festivities": "Chinese New Year, Christmas",
+                "Vehicle": "Car",
+                "Golf": "Yes",
+                "Golf Handicap": "18",
+                "Reception": "NYR, ALSE",
+                "Marital Status": "Single",
+                "Children (Son)": "0",
+                "Children (Daughter)": "0",
+                "Status": "Active", # Guide for expected values
+                "Tiering": "A",
+                "Category": "Local Rep"
+            }
+            # Append the example row to the template
+            template_df = pd.concat([template_df, pd.DataFrame([example_row])], ignore_index=True)
 
 
-        csv_template = template_df.to_csv(index=False).encode('utf-8')
-        
-        st.sidebar.download_button(
-            label="Download CSV Template",
-            data=csv_template,
-            file_name="contacts_template.csv",
-            mime="text/csv",
-            help="Download a CSV template to fill in new contact data."
-        )
+            csv_template = template_df.to_csv(index=False).encode('utf-8')
+            
+            st.download_button( # Note: use st.download_button directly inside expander
+                label="Download CSV Template",
+                data=csv_template,
+                file_name="contacts_template.csv",
+                mime="text/csv",
+                help="Download a CSV template to fill in new contact data."
+            )
 
-        # --- File Upload for Template (CSV only) ---
-        uploaded_file = st.sidebar.file_uploader(
-            "Upload your filled template (.csv)", # Only CSV type allowed now
-            type=["csv"], # Only CSV type allowed now
-            key="upload_filled_template_file",
-            help="Upload the template file after you have filled it with new contacts."
-        )
+        # --- File Upload for Template (CSV only) within its own expander ---
+        with st.sidebar.expander("Upload Bulk Contacts"):
+            st.write("Upload your filled template (.csv) to add new contacts.")
+            uploaded_file = st.file_uploader( # Note: use st.file_uploader directly inside expander
+                "Upload your filled template (.csv)",
+                type=["csv"],
+                key="upload_filled_template_file",
+                help="Upload the template file after you have filled it with new contacts."
+            )
 
-        if uploaded_file is not None:
-            if st.sidebar.button("Load Uploaded Template"):
-                try:
-                    # Only read CSV since xlsxwriter is removed
-                    new_contacts_df = pd.read_csv(uploaded_file)
-                    
-                    # --- Data Cleaning and Harmonization for Uploaded Template ---
-                    # 1. Standardize column names (optional, but good practice)
-                    new_contacts_df.columns = [col.strip() for col in new_contacts_df.columns]
-                    
-                    harmonized_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
-                    for col in EXPECTED_COLUMNS:
-                        if col in new_contacts_df.columns:
-                            harmonized_df[col] = new_contacts_df[col]
-                        else:
-                            # Set appropriate defaults for columns not in the template or expected from user
-                            if col in ["Children (Son)", "Children (Daughter)"]:
-                                harmonized_df[col] = 0
-                            elif col in ["Last Updated By", "Last Updated On"]:
-                                harmonized_df[col] = None # Will be filled later
-                            elif col == "History":
-                                harmonized_df[col] = [[] for _ in range(len(new_contacts_df))]
-                            elif col == "Photo":
-                                harmonized_df[col] = None
+            if uploaded_file is not None:
+                if st.button("Load Uploaded Template"): # Note: use st.button directly inside expander
+                    try:
+                        new_contacts_df = pd.read_csv(uploaded_file)
+                        
+                        # --- Data Cleaning and Harmonization for Uploaded Template ---
+                        # 1. Standardize column names (optional, but good practice)
+                        new_contacts_df.columns = [col.strip() for col in new_contacts_df.columns]
+                        
+                        harmonized_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
+                        for col in EXPECTED_COLUMNS:
+                            if col in new_contacts_df.columns:
+                                harmonized_df[col] = new_contacts_df[col]
                             else:
-                                harmonized_df[col] = None # Or "" for strings
+                                # Set appropriate defaults for columns not in the template or expected from user
+                                if col in ["Children (Son)", "Children (Daughter)"]:
+                                    harmonized_df[col] = 0
+                                elif col in ["Last Updated By", "Last Updated On"]:
+                                    harmonized_df[col] = None # Will be filled later
+                                elif col == "History":
+                                    harmonized_df[col] = [[] for _ in range(len(new_contacts_df))]
+                                elif col == "Photo":
+                                    harmonized_df[col] = None
+                                else:
+                                    harmonized_df[col] = None # Or "" for strings
 
-                    # Convert specific columns to appropriate types
-                    for date_col in ["Posting Date", "Deposted Date"]:
-                        if date_col in harmonized_df.columns:
-                            harmonized_df[date_col] = pd.to_datetime(harmonized_df[date_col], errors='coerce').dt.date
+                        # Convert specific columns to appropriate types
+                        for date_col in ["Posting Date", "Deposted Date"]:
+                            if date_col in harmonized_df.columns:
+                                harmonized_df[date_col] = pd.to_datetime(harmonized_df[date_col], errors='coerce').dt.date
 
-                    for child_col in ["Children (Son)", "Children (Daughter)"]:
-                        if child_col in harmonized_df.columns:
-                            harmonized_df[child_col] = pd.to_numeric(harmonized_df[child_col], errors='coerce').fillna(0).astype(int)
+                        for child_col in ["Children (Son)", "Children (Daughter)"]:
+                            if child_col in harmonized_df.columns:
+                                harmonized_df[child_col] = pd.to_numeric(harmonized_df[child_col], errors='coerce').fillna(0).astype(int)
 
-                    for list_col in ["Festivities", "Reception"]:
-                        if list_col in harmonized_df.columns:
-                            harmonized_df[list_col] = harmonized_df[list_col].astype(str).replace('nan', '').apply(
-                                lambda x: ", ".join(sorted([item.strip() for item in x.split(',') if item.strip()])) if x else ""
+                        for list_col in ["Festivities", "Reception"]:
+                            if list_col in harmonized_df.columns:
+                                harmonized_df[list_col] = harmonized_df[list_col].astype(str).replace('nan', '').apply(
+                                    lambda x: ", ".join(sorted([item.strip() for item in x.split(',') if item.strip()])) if x else ""
+                                )
+                        
+                        # Ensure essential columns are not null for new entries
+                        required_cols = ["Name", "Designation", "Country", "Company"]
+                        # Check if any of the required columns have nulls in the uploaded DataFrame
+                        if harmonized_df[required_cols].isnull().any().any():
+                            st.error("Uploaded template contains rows with missing essential information (Name, Designation, Country, Company). Please fill these fields.")
+                        else:
+                            # Set Last Updated fields and add initial history entry
+                            harmonized_df["Last Updated By"] = st.session_state.user_role if st.session_state.user_role else "Unknown (Template Upload)"
+                            harmonized_df["Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p")
+                            
+                            harmonized_df["History"] = harmonized_df.apply(
+                                lambda row: row["History"] + [f"Imported by {st.session_state.user_role if st.session_state.user_role else 'Unknown'} via template upload on {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}"] , axis=1
                             )
-                    
-                    # Ensure essential columns are not null for new entries
-                    required_cols = ["Name", "Designation", "Country", "Company"]
-                    # Check if any of the required columns have nulls in the uploaded DataFrame
-                    if harmonized_df[required_cols].isnull().any().any():
-                        st.error("Uploaded template contains rows with missing essential information (Name, Designation, Country, Company). Please fill these fields.")
-                    else:
-                        # Set Last Updated fields and add initial history entry
-                        harmonized_df["Last Updated By"] = st.session_state.user_role if st.session_state.user_role else "Unknown (Template Upload)"
-                        harmonized_df["Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p")
-                        
-                        harmonized_df["History"] = harmonized_df.apply(
-                            lambda row: row["History"] + [f"Imported by {st.session_state.user_role if st.session_state.user_role else 'Unknown'} via template upload on {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}"] , axis=1
-                        )
-                        
-                        st.session_state.contacts_df = pd.concat([st.session_state.contacts_df, harmonized_df], ignore_index=True)
-                        st.success(f"Successfully loaded {len(harmonized_df)} contacts from the template!")
-                        st.rerun()
+                            
+                            st.session_state.contacts_df = pd.concat([st.session_state.contacts_df, harmonized_df], ignore_index=True)
+                            st.success(f"Successfully loaded {len(harmonized_df)} contacts from the template!")
+                            st.rerun()
 
-                except Exception as e:
-                    st.error(f"Error reading file: {e}")
-                    st.info("Please ensure your template is correctly filled and saved as .csv.")
+                    except Exception as e:
+                        st.error(f"Error reading file: {e}")
+                        st.info("Please ensure your template is correctly filled and saved as .csv.")
 
 
 # --- 5. Search and Filter Functionality ---
 def search_and_filter(selected_category):
+    
     search_query = st.sidebar.text_input("Search")
     show_inactive = st.sidebar.checkbox("Show Inactive Contacts", value=False)
-    
+
     st.sidebar.subheader("Other Filters")
 
     all_designations = sorted(st.session_state.contacts_df["Designation"].dropna().unique().tolist())
@@ -844,6 +853,7 @@ def search_and_filter(selected_category):
     for festivity_str in st.session_state.contacts_df["Festivities"].dropna().unique():
         all_festivities_options.extend([f.strip() for f in str(festivity_str).split(',') if f.strip()])
     all_festivities_options = sorted(list(set(all_festivities_options))) # Get unique and sort
+
 
     selected_designations = st.sidebar.multiselect("Designation", options=all_designations, default=[])
     selected_countries = st.sidebar.multiselect("Country", options=all_countries, default=[])
@@ -944,11 +954,6 @@ def main():
 
         if st.session_state.user_role == "admin":
             admin_actions() # Call the new admin_actions function
-
-            # Manual Add Contact button (moved below admin actions for better flow)
-            if st.sidebar.button("Add New Contact (Single)"):
-                st.session_state.show_add_form = True
-                st.rerun()
 
             if st.session_state.show_add_form:
                 add_new_contact_form()
