@@ -654,17 +654,202 @@ def add_new_contact_form():
             else:
                 st.sidebar.error("Please fill in all required fields (Name, Designation, Country, Company).")
 
-# --- 3. Search and Filter Functionality ---
+# --- 4. Admin Actions (Download & Upload) ---
+def admin_actions():
+    if st.session_state.user_role == "admin":
+        st.sidebar.markdown("---")
+        st.sidebar.title("Admin Actions")
+
+        # --- Download All Data ---
+        df_for_download = st.session_state.contacts_df.copy()
+
+        # Ensure all EXPECTED_COLUMNS are present before converting to CSV
+        for col in EXPECTED_COLUMNS:
+            if col not in df_for_download.columns:
+                df_for_download[col] = None
+
+        for col in ["Posting Date", "Deposted Date"]:
+            if col in df_for_download.columns:
+                df_for_download[col] = df_for_download[col].apply(
+                    lambda x: x.strftime("%Y-%m-%d") if isinstance(x, (datetime, date)) else ""
+                )
+
+        df_for_download['History'] = df_for_download['History'].apply(
+            lambda x: "\n".join(x) if isinstance(x, list) else ""
+        )
+
+        df_for_download['Profile Picture (Base64)'] = df_for_download['Photo'].apply(
+            lambda x: base64.b64encode(x).decode('utf-8') if x is not None and isinstance(x, bytes) else ''
+        )
+
+        # Remove 'Photo' column as it's now Base64 encoded
+        df_for_download = df_for_download.drop(columns=["Photo"], errors='ignore')
+
+        csv_full_data = df_for_download.to_csv(index=False).encode('utf-8')
+        excel_full_data = io.BytesIO()
+        df_for_download.to_excel(excel_full_data, index=False, engine='xlsxwriter')
+        excel_full_data.seek(0)
+
+        st.sidebar.download_button(
+            label="Download All Contacts (CSV)",
+            data=csv_full_data,
+            file_name="all_contacts_data.csv",
+            mime="text/csv",
+            help="Downloads all contact data, including Base64 encoded profile pictures and change history."
+        )
+        st.sidebar.download_button(
+            label="Download All Contacts (Excel)",
+            data=excel_full_data,
+            file_name="all_contacts_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Downloads all contact data in Excel format."
+        )
+
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Upload Contacts using Template")
+
+        # --- Download Template ---
+        # Create a blank DataFrame with just the EXPECTED_COLUMNS
+        template_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
+        # Drop columns that are typically not filled in by user for template
+        template_df = template_df.drop(columns=["Photo", "Last Updated By", "Last Updated On", "History"], errors='ignore')
+        
+        # Add some example values to guide the user (optional, but very helpful)
+        example_row = {
+            "Name": "John Doe",
+            "Designation": "Software Engineer",
+            "Country": "Singapore",
+            "Company": "Tech Solutions",
+            "Phone Number": "6512345678",
+            "Office Number": "6587654321",
+            "Email Address": "john.doe@example.com",
+            "Posting Date": "YYYY-MM-DD", # Guide for date format
+            "Deposted Date": "YYYY-MM-DD (optional)",
+            "Office Address": "1 Tech Park Drive",
+            "Home Address": "123 Main Street",
+            "Hobbies": "Reading, Hiking",
+            "Dietary Restrictions": "None",
+            "Festivities": "Chinese New Year, Christmas",
+            "Vehicle": "Car",
+            "Golf": "Yes",
+            "Golf Handicap": "18",
+            "Reception": "NYR, ALSE",
+            "Marital Status": "Single",
+            "Children (Son)": "0",
+            "Children (Daughter)": "0",
+            "Status": "Active", # Guide for expected values
+            "Tiering": "A",
+            "Category": "Local Rep"
+        }
+        # Append the example row to the template
+        template_df = pd.concat([template_df, pd.DataFrame([example_row])], ignore_index=True)
+
+
+        csv_template = template_df.to_csv(index=False).encode('utf-8')
+        excel_template = io.BytesIO()
+        template_df.to_excel(excel_template, index=False, engine='xlsxwriter')
+        excel_template.seek(0)
+
+        st.sidebar.download_button(
+            label="Download CSV Template",
+            data=csv_template,
+            file_name="contacts_template.csv",
+            mime="text/csv",
+            help="Download a CSV template to fill in new contact data."
+        )
+        st.sidebar.download_button(
+            label="Download Excel Template",
+            data=excel_template,
+            file_name="contacts_template.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Download an Excel template to fill in new contact data."
+        )
+
+        # --- File Upload for Template ---
+        uploaded_file = st.sidebar.file_uploader(
+            "Upload your filled template (.xlsx or .csv)",
+            type=["xlsx", "csv"],
+            key="upload_filled_template_file",
+            help="Upload the template file after you have filled it with new contacts."
+        )
+
+        if uploaded_file is not None:
+            if st.sidebar.button("Load Uploaded Template"):
+                try:
+                    if uploaded_file.name.endswith('.csv'):
+                        new_contacts_df = pd.read_csv(uploaded_file)
+                    elif uploaded_file.name.endswith('.xlsx'):
+                        new_contacts_df = pd.read_excel(uploaded_file)
+                    
+                    # --- Data Cleaning and Harmonization for Uploaded Template ---
+                    # 1. Standardize column names (optional, but good practice)
+                    new_contacts_df.columns = [col.strip() for col in new_contacts_df.columns]
+                    
+                    harmonized_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
+                    for col in EXPECTED_COLUMNS:
+                        if col in new_contacts_df.columns:
+                            harmonized_df[col] = new_contacts_df[col]
+                        else:
+                            # Set appropriate defaults for columns not in the template or expected from user
+                            if col in ["Children (Son)", "Children (Daughter)"]:
+                                harmonized_df[col] = 0
+                            elif col in ["Last Updated By", "Last Updated On"]:
+                                harmonized_df[col] = None # Will be filled later
+                            elif col == "History":
+                                harmonized_df[col] = [[] for _ in range(len(new_contacts_df))]
+                            elif col == "Photo":
+                                harmonized_df[col] = None
+                            else:
+                                harmonized_df[col] = None # Or "" for strings
+
+                    # Convert specific columns to appropriate types
+                    for date_col in ["Posting Date", "Deposted Date"]:
+                        if date_col in harmonized_df.columns:
+                            harmonized_df[date_col] = pd.to_datetime(harmonized_df[date_col], errors='coerce').dt.date
+
+                    for child_col in ["Children (Son)", "Children (Daughter)"]:
+                        if child_col in harmonized_df.columns:
+                            harmonized_df[child_col] = pd.to_numeric(harmonized_df[child_col], errors='coerce').fillna(0).astype(int)
+
+                    for list_col in ["Festivities", "Reception"]:
+                        if list_col in harmonized_df.columns:
+                            harmonized_df[list_col] = harmonized_df[list_col].astype(str).replace('nan', '').apply(
+                                lambda x: ", ".join(sorted([item.strip() for item in x.split(',') if item.strip()])) if x else ""
+                            )
+                    
+                    # Ensure essential columns are not null for new entries
+                    required_cols = ["Name", "Designation", "Country", "Company"]
+                    if not harmonized_df[required_cols].isnull().all(axis=1).any(): # Check if any row is entirely null for required cols
+                        # Set Last Updated fields and add initial history entry
+                        harmonized_df["Last Updated By"] = st.session_state.user_role if st.session_state.user_role else "Unknown (Template Upload)"
+                        harmonized_df["Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p")
+                        
+                        harmonized_df["History"] = harmonized_df.apply(
+                            lambda row: row["History"] + [f"Imported by {st.session_state.user_role if st.session_state.user_role else 'Unknown'} via template upload on {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}"] , axis=1
+                        )
+                        
+                        st.session_state.contacts_df = pd.concat([st.session_state.contacts_df, harmonized_df], ignore_index=True)
+                        st.success(f"Successfully loaded {len(harmonized_df)} contacts from the template!")
+                        st.rerun()
+                    else:
+                        st.error("Uploaded template contains rows with missing essential information (Name, Designation, Country, Company). Please fill these fields.")
+
+                except Exception as e:
+                    st.error(f"Error reading file: {e}")
+                    st.info("Please ensure your template is correctly filled and saved as .xlsx or .csv.")
+
+
+# --- 5. Search and Filter Functionality ---
 def search_and_filter(selected_category):
-    
-    search_query = st.sidebar.text_input("Search")
+    st.sidebar.title("Other Filters")
+    search_query = st.sidebar.text_input("Search (any field)")
+
     show_inactive = st.sidebar.checkbox("Show Inactive Contacts", value=False)
 
-    st.sidebar.subheader("Other Filters")
     all_designations = sorted(st.session_state.contacts_df["Designation"].dropna().unique().tolist())
     all_countries = sorted(st.session_state.contacts_df["Country"].dropna().unique().tolist())
     all_companies = sorted(st.session_state.contacts_df["Company"].dropna().unique().tolist())
-    all_tierings = ["A+", "A", "B", "C", "Untiered"]
+    all_tierings = ["A", "B", "C", "Untiered"]
     all_golf_options = ["Yes", "No"]
 
     # Get all unique reception options from data
@@ -745,47 +930,7 @@ def search_and_filter(selected_category):
     filtered_df = filtered_df.sort_values(by="Name", ascending=True)
     return filtered_df
 
-# --- 4. Admin Download Functionality ---
-def download_csv():
-    if st.session_state.user_role == "admin":
-        st.sidebar.markdown("---")
-        st.sidebar.title("Admin Actions")
-
-        df_for_download = st.session_state.contacts_df.copy()
-
-        # Ensure all EXPECTED_COLUMNS are present before converting to CSV
-        for col in EXPECTED_COLUMNS:
-            if col not in df_for_download.columns:
-                df_for_download[col] = None # Add missing columns as None for consistent export
-
-        for col in ["Posting Date", "Deposted Date"]:
-            if col in df_for_download.columns:
-                df_for_download[col] = df_for_download[col].apply(
-                    lambda x: x.strftime("%Y-%m-%d") if isinstance(x, (datetime, date)) else ""
-                )
-
-        # Convert list of history entries to a single string for CSV export
-        # Each history entry will be on a new line within the cell
-        df_for_download['History'] = df_for_download['History'].apply(
-            lambda x: "\n".join(x) if isinstance(x, list) else ""
-        )
-
-        df_for_download['Profile Picture (Base64)'] = df_for_download['Photo'].apply(
-            lambda x: base64.b64encode(x).decode('utf-8') if x is not None and isinstance(x, bytes) else ''
-        )
-
-        df_for_download = df_for_download.drop(columns=["Photo"], errors='ignore')
-
-        csv_export = df_for_download.to_csv(index=False).encode('utf-8')
-        st.sidebar.download_button(
-            label="Download Contact Data (CSV)",
-            data=csv_export,
-            file_name="contact_data_with_images_and_history.csv",
-            mime="text/csv",
-            help="Downloads all contact data, including Base64 encoded profile pictures and change history."
-        )
-
-# --- 5. Main App Logic ---
+# --- 6. Main App Logic ---
 def main():
     if st.session_state.user_role is None:
         st.title("Welcome to the Contact Card App 👋")
@@ -820,9 +965,10 @@ def main():
         st.markdown("---")
 
         if st.session_state.user_role == "admin":
-            download_csv()
+            admin_actions() # Call the new admin_actions function
 
-            if st.sidebar.button("Add New Contact"):
+            # Manual Add Contact button (moved below admin actions for better flow)
+            if st.sidebar.button("Add New Contact (Manual)"):
                 st.session_state.show_add_form = True
                 st.rerun()
 
