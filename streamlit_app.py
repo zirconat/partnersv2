@@ -696,7 +696,7 @@ def admin_actions():
         )
 
         st.sidebar.markdown("---")
-        st.sidebar.subheader("Upload Contacts using Template")
+        st.sidebar.subheader("Upload Bulk Contacts")
 
         # --- Download Template (CSV only) ---
         # Create a blank DataFrame with just the EXPECTED_COLUMNS
@@ -820,15 +820,15 @@ def admin_actions():
 
 # --- 5. Search and Filter Functionality ---
 def search_and_filter(selected_category):
-    st.sidebar.title("Other Filters")
-    search_query = st.sidebar.text_input("Search (any field)")
-
+    search_query = st.sidebar.text_input("Search")
     show_inactive = st.sidebar.checkbox("Show Inactive Contacts", value=False)
+    
+    st.sidebar.subheader("Other Filters")
 
     all_designations = sorted(st.session_state.contacts_df["Designation"].dropna().unique().tolist())
     all_countries = sorted(st.session_state.contacts_df["Country"].dropna().unique().tolist())
     all_companies = sorted(st.session_state.contacts_df["Company"].dropna().unique().tolist())
-    all_tierings = ["A", "B", "C", "Untiered"]
+    all_tierings = ["A+", "A", "B", "C", "Untiered"]
     all_golf_options = ["Yes", "No"]
 
     # Get all unique reception options from data
@@ -844,7 +844,6 @@ def search_and_filter(selected_category):
     for festivity_str in st.session_state.contacts_df["Festivities"].dropna().unique():
         all_festivities_options.extend([f.strip() for f in str(festivity_str).split(',') if f.strip()])
     all_festivities_options = sorted(list(set(all_festivities_options))) # Get unique and sort
-
 
     selected_designations = st.sidebar.multiselect("Designation", options=all_designations, default=[])
     selected_countries = st.sidebar.multiselect("Country", options=all_countries, default=[])
@@ -947,7 +946,7 @@ def main():
             admin_actions() # Call the new admin_actions function
 
             # Manual Add Contact button (moved below admin actions for better flow)
-            if st.sidebar.button("Add New Contact (Manual)"):
+            if st.sidebar.button("Add New Contact (Single)"):
                 st.session_state.show_add_form = True
                 st.rerun()
 
