@@ -252,21 +252,21 @@ def edit_contact_form(contact, index):
         col_son, col_daughter = st.columns(2)
         with col_son:
             # Safely get the value for children_son, defaulting to 0 if None/NaN
-            children_son_value = int(contact.get("Children (Son)", 0)) if pd.notna(contact.get("Children (Son)", 0)) else 0
+            num_sons_value = int(contact.get("Children (Son)", 0)) if pd.notna(contact.get("Children (Son)", 0)) else 0
             children_son = st.number_input(
                 "Children (Sons)",
                 min_value=0,
-                value=children_son_value, # Use the safely determined value
+                value=num_sons_value, # Use the safely determined value
                 step=1,
                 key=f"edit_children_son_{index}"
             )
         with col_daughter:
             # Safely get the value for children_daughter, defaulting to 0 if None/NaN
-            children_daughter_value = int(contact.get("Children (Daughter)", 0)) if pd.notna(contact.get("Children (Daughter)", 0)) else 0
+            num_daughters_value = int(contact.get("Children (Daughter)", 0)) if pd.notna(contact.get("Children (Daughter)", 0)) else 0
             children_daughter = st.number_input(
                 "Children (Daughters)",
                 min_value=0,
-                value=children_daughter_value, # Use the safely determined value
+                value=num_daughters_value, # Use the safely determined value
                 step=1,
                 key=f"edit_children_daughter_{index}"
             )
@@ -660,7 +660,7 @@ def admin_actions():
         st.sidebar.markdown("---")
         st.sidebar.title("Admin Actions")
 
-        # --- Download All Data ---
+        # --- Download All Data (CSV only) ---
         df_for_download = st.session_state.contacts_df.copy()
 
         # Ensure all EXPECTED_COLUMNS are present before converting to CSV
@@ -686,10 +686,7 @@ def admin_actions():
         df_for_download = df_for_download.drop(columns=["Photo"], errors='ignore')
 
         csv_full_data = df_for_download.to_csv(index=False).encode('utf-8')
-        excel_full_data = io.BytesIO()
-        df_for_download.to_excel(excel_full_data, index=False, engine='xlsxwriter')
-        excel_full_data.seek(0)
-
+        
         st.sidebar.download_button(
             label="Download All Contacts (CSV)",
             data=csv_full_data,
@@ -697,18 +694,11 @@ def admin_actions():
             mime="text/csv",
             help="Downloads all contact data, including Base64 encoded profile pictures and change history."
         )
-        st.sidebar.download_button(
-            label="Download All Contacts (Excel)",
-            data=excel_full_data,
-            file_name="all_contacts_data.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Downloads all contact data in Excel format."
-        )
 
         st.sidebar.markdown("---")
         st.sidebar.subheader("Upload Contacts using Template")
 
-        # --- Download Template ---
+        # --- Download Template (CSV only) ---
         # Create a blank DataFrame with just the EXPECTED_COLUMNS
         template_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
         # Drop columns that are typically not filled in by user for template
@@ -746,10 +736,7 @@ def admin_actions():
 
 
         csv_template = template_df.to_csv(index=False).encode('utf-8')
-        excel_template = io.BytesIO()
-        template_df.to_excel(excel_template, index=False, engine='xlsxwriter')
-        excel_template.seek(0)
-
+        
         st.sidebar.download_button(
             label="Download CSV Template",
             data=csv_template,
@@ -757,18 +744,11 @@ def admin_actions():
             mime="text/csv",
             help="Download a CSV template to fill in new contact data."
         )
-        st.sidebar.download_button(
-            label="Download Excel Template",
-            data=excel_template,
-            file_name="contacts_template.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Download an Excel template to fill in new contact data."
-        )
 
-        # --- File Upload for Template ---
+        # --- File Upload for Template (CSV only) ---
         uploaded_file = st.sidebar.file_uploader(
-            "Upload your filled template (.xlsx or .csv)",
-            type=["xlsx", "csv"],
+            "Upload your filled template (.csv)", # Only CSV type allowed now
+            type=["csv"], # Only CSV type allowed now
             key="upload_filled_template_file",
             help="Upload the template file after you have filled it with new contacts."
         )
@@ -776,10 +756,8 @@ def admin_actions():
         if uploaded_file is not None:
             if st.sidebar.button("Load Uploaded Template"):
                 try:
-                    if uploaded_file.name.endswith('.csv'):
-                        new_contacts_df = pd.read_csv(uploaded_file)
-                    elif uploaded_file.name.endswith('.xlsx'):
-                        new_contacts_df = pd.read_excel(uploaded_file)
+                    # Only read CSV since xlsxwriter is removed
+                    new_contacts_df = pd.read_csv(uploaded_file)
                     
                     # --- Data Cleaning and Harmonization for Uploaded Template ---
                     # 1. Standardize column names (optional, but good practice)
@@ -819,7 +797,10 @@ def admin_actions():
                     
                     # Ensure essential columns are not null for new entries
                     required_cols = ["Name", "Designation", "Country", "Company"]
-                    if not harmonized_df[required_cols].isnull().all(axis=1).any(): # Check if any row is entirely null for required cols
+                    # Check if any of the required columns have nulls in the uploaded DataFrame
+                    if harmonized_df[required_cols].isnull().any().any():
+                        st.error("Uploaded template contains rows with missing essential information (Name, Designation, Country, Company). Please fill these fields.")
+                    else:
                         # Set Last Updated fields and add initial history entry
                         harmonized_df["Last Updated By"] = st.session_state.user_role if st.session_state.user_role else "Unknown (Template Upload)"
                         harmonized_df["Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p")
@@ -831,12 +812,10 @@ def admin_actions():
                         st.session_state.contacts_df = pd.concat([st.session_state.contacts_df, harmonized_df], ignore_index=True)
                         st.success(f"Successfully loaded {len(harmonized_df)} contacts from the template!")
                         st.rerun()
-                    else:
-                        st.error("Uploaded template contains rows with missing essential information (Name, Designation, Country, Company). Please fill these fields.")
 
                 except Exception as e:
                     st.error(f"Error reading file: {e}")
-                    st.info("Please ensure your template is correctly filled and saved as .xlsx or .csv.")
+                    st.info("Please ensure your template is correctly filled and saved as .csv.")
 
 
 # --- 5. Search and Filter Functionality ---
