@@ -701,8 +701,6 @@ def admin_actions():
             st.rerun()
         st.sidebar.caption("For bulk upload, download template below")
         
-        st.sidebar.markdown("---")
-        
         # --- Download Template within an expander ---
         with st.sidebar.expander("Download Template"):
             st.write("Download a CSV template to fill in new contact data.")
