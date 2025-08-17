@@ -6,6 +6,7 @@ import io
 import base64
 from pathlib import Path
 import os
+import json
 
 # --- MUST BE THE FIRST STREAMLIT COMMAND ---
 st.set_page_config(layout="wide", page_title="Contact Card App 📞")
@@ -18,7 +19,8 @@ EXPECTED_COLUMNS = [
     "Office Address", "Home Address", "Hobbies", "Dietary Restrictions",
     "Festivities", "Vehicle", "Golf", "Golf Handicap", "Reception",
     "Marital Status", "Children (Son)", "Children (Daughter)",
-    "Status", "Tiering", "Category", "Photo",
+    "Date of Birth", "Known Age (Current Year)",
+    "Status", "Tiering", "Category", "Photo", "Comments", # Added Comments
     "Last Updated By", "Last Updated On", "History"
 ]
 
@@ -35,15 +37,32 @@ if 'contacts_df' not in st.session_state:
 
     # Initial sample data (ensure it aligns with EXPECTED_COLUMNS)
     initial_data = [
-        ["Albert", "SC", "Australia", "CompanyA", "98765432", "9876544321", "albert@company.com", date(2025, 8, 12), None, "123 bsdlk slhf", "456 Home Rd, Perth", "sleeping", "NIL", "Deepavali", "s1234cd", "Yes", "20", "NYR, ALSE", "Married", 1, 1, "Active", "A", "Local Rep", None, "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p"), []], # Use get_gmt8_now()
-        ["Bob The Builder", "Project Manager", "Canada", "BuildCo","987-654-3210", "654-321-0987", "bob@buildco.ca", date(2025, 8, 12), None, "789 Construction Blvd, Toronto", "101 Maple Lane, Toronto", "Gardening, Cycling", "None", "Canada Day", "s1234cd", "Yes", "20", "Client Meeting", "Single", 0, 0, "Active", "B", "Overseas Rep", None, "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p"), []], # Use get_gmt8_now()
-        ["Charlie Chaplin", "Actor", "UK", "Comedy Gold Studios", "555-123-4567", "555-987-6543", "charlie@comedy.co.uk", date(2025, 8, 12), None, "Studio 5, London", "1 Baker Street, London", "Filmmaking, Chess", "Vegan", "Halloween", "s1234cd", "Yes", "20", "Film Premiere", "Divorced", 1, 0, "Inactive", "C", "Chief", None, "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p"), []], # Use get_gmt8_now()
-        ["David Lee", "Engineer", "Singapore", "TechCorp", "65123456", "65789012", "david.lee@techcorp.sg", date(2024, 1, 15), None, "Science Park Dr", "Holland Village", "Hiking", "Gluten-free", "Chinese New Year", "sedan", "No", "N/A", "Project Review", "Married", 0, 2, "Active", "A", "ID", None, "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p"), []], # Use get_gmt8_now()
-        # Add a new entry to demonstrate "Unknown" children
-        ["Unknown Child Example", "Tester", "USA", "TestCo", "111", "222", "unknown@test.com", date(2025, 1, 1), None, "Test Address", "Test Home", "Testing", "None", "None", "bicycle", "No", "N/A", "Review", "Single", None, None, "Active", "B", "ID", None, "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p"), []],
-        ["Eve Adams", "CEO", "USA", "Global Solutions", "123-456-7890", "987-654-3210", "eve@globalsolutions.com", date(2023, 10, 20), None, "Wall Street, NYC", "5th Avenue, NYC", "Reading, Yoga", "None", "Thanksgiving", "SUV", "Yes", "15", "Board Meeting", "Single", 0, 0, "Active", "A", "Chief", None, "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p"), []] # Use get_gmt8_now()
+        # Local Rep Category (2 samples)
+        ["Albert Tan", "Senior Manager", "Singapore", "Tech Innovations", "98765432", "67890123", "albert.t@techinnov.com", date(2025, 8, 12), None, "123 Orchard Rd", "456 Home Rd, Singapore", "Gaming", "Vegetarian", "Deepavali", "BMW X5", "Yes", "20", "NYR, ALSE", "Married", 1, 1, date(1980, 5, 15), None, "Active", "A", "Local Rep", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+        ["Serene Lim", "Marketing Lead", "Singapore", "Creative Solutions", "91234567", "61234567", "serene.l@creatives.com", date(2024, 3, 1), None, "789 Marina Blvd", "10 Queen St, Singapore", "Yoga", "None", "Chinese New Year", "Mercedes C-Class", "No", "N/A", "Client Event", "Single", 0, 0, date(1992, 11, 22), None, "Active", "B", "Local Rep", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+
+        # Overseas Rep Category (2 samples)
+        ["Bob Johnson", "Regional Director", "Australia", "Global Reach Inc.", "0412345678", "029876543", "bob.j@globalreach.com", date(2023, 1, 20), None, "Sydney CBD", "Melbourne Suburbs", "Surfing", "None", "Australia Day", "Ford Ranger", "Yes", "15", "Networking Mixer", "Married", 2, 1, date(1975, 7, 10), None, "Active", "A+", "Overseas Rep", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+        ["Catherine Dubois", "Business Development", "France", "EuroConnect", "0612345678", "0123456789", "catherine.d@euroconnect.fr", date(2022, 10, 5), None, "Paris Office", "Nice Apartment", "Art, Cooking", "Pescatarian", "Bastille Day", "Renault Clio", "No", "N/A", "Industry Fair", "Single", 0, 0, date(1988, 2, 29), None, "Active", "B", "Overseas Rep", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+
+        # Chief Category (2 samples)
+        ["Chief Lee", "Chief Strategy Officer", "USA", "Innovate Global", "123-456-7890", "987-654-3210", "clee@innovateglobal.com", date(2021, 5, 1), None, "New York HQ", "Greenwich, CT", "Golf, Philanthropy", "None", "Thanksgiving", "Tesla Model S", "Yes", "5", "Board Meeting", "Married", 2, 2, date(1965, 9, 3), None, "Active", "A+", "Chief", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+        ["Maria Gomez", "Chief Financial Officer", "Spain", "Finance Leaders", "600112233", "910112233", "maria.g@financeleaders.es", date(2020, 1, 1), None, "Madrid HQ", "Barcelona Apartment", "Sailing, Reading", "Gluten-Free", "Christmas", "Audi Q7", "No", "N/A", "Investor Call", "Married", 1, 1, date(1970, 4, 25), None, "Active", "A", "Chief", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+
+        # Dy Chief Category (2 samples)
+        ["David Chen", "Deputy Chief Architect", "China", "Future Systems", "13800138000", "01012345678", "david.c@futuresystems.cn", date(2023, 7, 15), None, "Beijing R&D Center", "Shanghai Penthouse", "Calligraphy", "None", "Lunar New Year", "BYD Han", "Yes", "10", "Tech Conference", "Married", 1, 0, date(1978, 8, 8), None, "Active", "A", "Dy Chief", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+        ["Sarah White", "Deputy Chief of Staff", "UK", "Government Affairs", "07700900123", "02012345678", "sarah.w@govaffairs.co.uk", date(2024, 2, 20), None, "Whitehall Office", "Rural Estate", "Horse Riding", "Dairy-Free", "Royal Jubilee", "Range Rover", "No", "N/A", "Parliament Session", "Single", 0, 0, date(1985, 6, 1), None, "Active", "B", "Dy Chief", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+
+        # ID Category (2 samples)
+        ["Ivan Petrov", "Independent Consultant", "Russia", "Self-Employed", "9012345678", "N/A", "ivan.p@consult.ru", date(2024, 4, 1), None, "Moscow Home Office", "St. Petersburg Apartment", "Skiing", "None", "Victory Day", "Lada Vesta", "No", "N/A", "Project Review", "Divorced", 1, 0, date(1973, 1, 1), None, "Active", "C", "ID", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+        ["Unknown Child Example", "Tester", "USA", "TestCo","111", "222", "unknown@test.com", date(2025, 1, 1), None, "Test Address", "Test Home", "Testing", "None", "None", "bicycle", "No", "N/A", "Review", "Single", None, None, None, None, "Active", "B", "ID", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+
+
+        # Others Category (2 samples)
+        ["Zoe Adams", "Freelance Writer", "Canada", "Self-Employed", "555-555-1212", "N/A", "zoe.a@freelance.com", date(2024, 6, 1), None, "Vancouver Cafe", "Whistler Cabin", "Writing, Hiking", "Vegan", "Canada Day", "Electric Scooter", "No", "N/A", "Book Launch", "Single", 0, 0, date(1995, 3, 3), None, "Active", "Untiered", "Others", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
+        ["Youssef Hassan", "Community Organizer", "Egypt", "Local NGO", "01012345678", "N/A", "youssef.h@ngo.org", date(2025, 1, 1), None, "Cairo Community Center", "Giza Flat", "Volunteering", "Halal", "Eid al-Fitr", "Bicycle", "No", "N/A", "Charity Event", "Married", 0, 0, date(1982, 10, 10), None, "Active", "C", "Others", None, [], "System", get_gmt8_now().strftime("%d %b %y, %I:%M %p")],
     ]
-    
+
     # Create the initial DataFrame from the sample data
     st.session_state.contacts_df = pd.DataFrame(initial_data, columns=EXPECTED_COLUMNS)
 
@@ -52,16 +71,20 @@ if 'contacts_df' not in st.session_state:
 for col in EXPECTED_COLUMNS:
     if col not in st.session_state.contacts_df.columns:
         # For numerical columns like children, initialize with None for "Unknown"
-        if col in ["Children (Son)", "Children (Daughter)"]:
-            st.session_state.contacts_df[col] = None # Default to None (Unknown)
+        if col in ["Children (Son)", "Children (Daughter)", "Date of Birth", "Known Age (Current Year)"]:
+            st.session_state.contacts_df[col] = None
+        elif col == "Comments": # Initialize comments as an empty list
+            st.session_state.contacts_df[col] = [[] for _ in range(len(st.session_state.contacts_df))]
+        elif col == "History": # Initialize history as an empty list
+            st.session_state.contacts_df[col] = [[] for _ in range(len(st.session_state.contacts_df))]
         else:
             st.session_state.contacts_df[col] = None # Or an appropriate default value like ""
 
-# Ensure all 'Category' values are valid based on your options
-valid_categories = ["Local Rep", "Overseas Rep", "Chief", "ID", "N/A"]
+# Define ALL valid categories
+valid_categories = ["Local Rep", "Overseas Rep", "Chief", "Dy Chief", "ID", "Others"]
 if 'contacts_df' in st.session_state:
     st.session_state.contacts_df['Category'] = st.session_state.contacts_df['Category'].apply(
-        lambda x: x if x in valid_categories else "N/A"
+        lambda x: x if x in valid_categories else "Others" # Default to "Others" for unrecognized categories
     )
 
 # Initialize selected category for buttons
@@ -105,11 +128,10 @@ COMMON_FESTIVITIES.sort() # Keep them sorted
 
 MARITAL_STATUS_OPTIONS = ["Single", "Married", "Divorced", "Widowed", "Separated", "Prefer not to say"]
 
-# Options for children dropdown - Starts from 1
-CHILDREN_OPTIONS = ["Unknown"] + list(range(1, 11)) # Unknown, 1, 2, ..., 10
+# Options for children dropdown - Now includes '0'
+CHILDREN_OPTIONS = ["Unknown", 0] + list(range(1, 11)) # Unknown, 0, 1, 2, ..., 10
 
-
-# --- New Tiering Options
+# New Tiering Options
 TIERING_OPTIONS = ["A+", "A", "B", "C", "Untiered"]
 
 
@@ -141,23 +163,88 @@ def process_multi_text_input(selected_options, custom_text):
     combined = []
     if selected_options:
         combined.extend(selected_options)
-    
+
     if custom_text:
         # Split by comma and clean up spaces, then add to combined
         new_entries = [item.strip() for item in custom_text.split(',') if item.strip()]
         for entry in new_entries:
             if entry not in combined:
                 combined.append(entry)
-    
+
     # Sort and return as a comma-separated string for consistency with existing data
     combined.sort()
     return ", ".join(combined)
+
+# --- Helper function to calculate age ---
+def calculate_age(dob, known_age_current_year):
+    today = date.today()
+    if pd.notna(dob) and isinstance(dob, (date, datetime)):
+        # Calculate precise age from Date of Birth
+        return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    elif pd.notna(known_age_current_year) and isinstance(known_age_current_year, (int, float)):
+        # Calculate approximate age from Known Age (Current Year)
+        # This assumes the 'known_age_current_year' was provided for the year it was last updated.
+        # To make it auto-update, we need to consider the current year relative to when it was recorded.
+        # For simplicity and auto-update: if `Known Age (Current Year)` is `X`,
+        # it means the person is X years old in the CURRENT year.
+        # This simplifies the logic to just returning the known_age_current_year
+        # as it is inherently meant to be *the current age*.
+        return int(known_age_current_year)
+    return None # Return None if no valid birth info
 
 # --- 2. Contact Card Display and Editing ---
 def edit_contact_form(contact, index):
     st.markdown("<h4>Edit Contact</h4>", unsafe_allow_html=True)
     with st.form(key=f"edit_form_{index}"):
         name = st.text_input("Name*", value=contact["Name"], key=f"edit_name_{index}")
+
+        # New fields for Date of Birth / Known Age (Current Year) - MOVED UP
+        col_dob, col_known_age = st.columns(2)
+        with col_dob:
+            current_dob_value = contact.get("Date of Birth")
+            if isinstance(current_dob_value, (datetime, date)):
+                dob_value = current_dob_value
+            elif pd.notna(current_dob_value):
+                try:
+                    dob_value = pd.to_datetime(current_dob_value).date()
+                except ValueError:
+                    dob_value = None
+            else:
+                dob_value = None
+
+            date_of_birth = st.date_input(
+                "Date of Birth (Optional)",
+                value=dob_value,
+                key=f"edit_dob_{index}",
+                min_value=date(1900,1,1), # Prevent overly old dates
+                max_value=date.today() # Prevent future dates
+            )
+            # If user selects the default minimum date, treat it as unset for DOB
+            final_date_of_birth = date_of_birth if pd.notna(date_of_birth) and date_of_birth != date(1900,1,1) else None
+
+
+        with col_known_age:
+            current_known_age_value = contact.get("Known Age (Current Year)")
+            known_age_str = str(int(current_known_age_value)) if pd.notna(current_known_age_value) else ""
+            known_age_input = st.text_input(
+                f"Age (as of {date.today().year}, Optional)", # Display current year in label
+                value=known_age_str,
+                key=f"edit_known_age_{index}",
+                help="Enter the contact's current age if their exact Date of Birth is unknown. This will auto-update yearly."
+            )
+            known_age_current_year = None
+            if known_age_input.strip():
+                try:
+                    known_age_current_year = int(known_age_input.strip())
+                    if not (0 <= known_age_current_year <= 120): # Reasonable age range
+                        st.error("Age must be between 0 and 120.")
+                        known_age_current_year = None # Invalidate if outside range
+                except ValueError:
+                    st.error("Invalid Age. Please enter a whole number.")
+
+            final_known_age_current_year = known_age_current_year
+
+
         designation = st.text_input("Designation*", value=contact["Designation"], key=f"edit_designation_{index}")
 
         # Country Dropdown
@@ -167,7 +254,7 @@ def edit_contact_form(contact, index):
         company = st.text_input("Company*", value=contact["Company"], key=f"edit_company_{index}")
         phone_number = st.text_input("Phone Number", value=contact["Phone Number"], key=f"edit_phone_number_{index}")
         office_number = st.text_input("Office Number", value=contact["Office Number"], key=f"edit_office_number_{index}")
-        
+
         # Access 'Email Address' safely using .get() for robustness during initial runs
         email_address_value = contact.get("Email Address", "") # Default to empty string if missing
         email_address = st.text_input("Email Address", value=email_address_value, key=f"edit_email_{index}")
@@ -179,6 +266,8 @@ def edit_contact_form(contact, index):
             try:
                 posting_date_value = pd.to_datetime(initial_posting_date).date()
             except ValueError:
+                posting_date_value = None
+            except TypeError: # Handle cases where it might be a list or other unexpected type
                 posting_date_value = None
         else:
             posting_date_value = None
@@ -193,6 +282,8 @@ def edit_contact_form(contact, index):
                 deposted_date_value = pd.to_datetime(initial_deposted_date).date()
             except ValueError:
                 deposted_date_value = None
+            except TypeError:
+                deposted_date_value = None
         else:
             deposted_date_value = None
 
@@ -203,13 +294,13 @@ def edit_contact_form(contact, index):
         home_address = st.text_area("Home Address", value=contact["Home Address"], key=f"edit_home_address_{index}")
         hobbies = st.text_input("Hobbies", value=contact["Hobbies"], key=f"edit_hobbies_{index}")
         dietary_restrictions = st.text_input("Dietary Restrictions", value=contact["Dietary Restrictions"], key=f"edit_dietary_restrictions_{index}")
-        
+
         # Festivities Multiselect + Text Area
         current_festivities_list = [f.strip() for f in str(contact["Festivities"]).split(',') if f.strip()] if pd.notna(contact["Festivities"]) else []
-        
+
         # Determine default selected options for multiselect
         default_selected_festivities = [f for f in current_festivities_list if f in COMMON_FESTIVITIES]
-        
+
         # Determine custom text part
         custom_festivities_text = ", ".join([f for f in current_festivities_list if f not in COMMON_FESTIVITIES])
 
@@ -237,7 +328,7 @@ def edit_contact_form(contact, index):
 
         # Reception Multiselect
         current_reception_list = [r.strip() for r in str(contact["Reception"]).split(',') if r.strip()] if pd.notna(contact["Reception"]) else []
-        
+
         reception = st.multiselect(
             "Reception",
             options=RECEPTION_OPTIONS,
@@ -262,12 +353,14 @@ def edit_contact_form(contact, index):
         with col_son:
             # Determine initial index for "Children (Son)" selectbox
             current_sons_value = contact.get("Children (Son)")
-            if pd.isna(current_sons_value) or current_sons_value is None:
+            if pd.isna(current_sons_value) or current_sons_value is None: # Covers None and NaN
                 default_sons_index = CHILDREN_OPTIONS.index("Unknown")
+            elif int(current_sons_value) == 0: # Explicitly check for 0
+                default_sons_index = CHILDREN_OPTIONS.index(0)
             elif int(current_sons_value) in CHILDREN_OPTIONS: # Check if the number is in our list
                 default_sons_index = CHILDREN_OPTIONS.index(int(current_sons_value))
-            else: # Fallback for numbers outside our range, or 0, default to "Unknown"
-                default_sons_index = CHILDREN_OPTIONS.index("Unknown") 
+            else: # Fallback if value is out of bounds or unexpected
+                default_sons_index = CHILDREN_OPTIONS.index("Unknown")
 
             children_son_input = st.selectbox(
                 "Children (Sons)",
@@ -275,18 +368,20 @@ def edit_contact_form(contact, index):
                 index=default_sons_index,
                 key=f"edit_children_son_{index}"
             )
-            # Convert "Unknown" to None, otherwise keep the number
+            # Convert "Unknown" to None, otherwise keep the number (0 will be kept as 0)
             children_son = None if children_son_input == "Unknown" else children_son_input
 
         with col_daughter:
             # Determine initial index for "Children (Daughter)" selectbox
             current_daughters_value = contact.get("Children (Daughter)")
-            if pd.isna(current_daughters_value) or current_daughters_value is None:
+            if pd.isna(current_daughters_value) or current_daughters_value is None: # Covers None and NaN
                 default_daughters_index = CHILDREN_OPTIONS.index("Unknown")
+            elif int(current_daughters_value) == 0: # Explicitly check for 0
+                default_daughters_index = CHILDREN_OPTIONS.index(0)
             elif int(current_daughters_value) in CHILDREN_OPTIONS: # Check if the number is in our list
                 default_daughters_index = CHILDREN_OPTIONS.index(int(current_daughters_value))
-            else: # Fallback for numbers outside our range, or 0, default to "Unknown"
-                default_daughters_index = CHILDREN_OPTIONS.index("Unknown") 
+            else: # Fallback if value is out of bounds or unexpected
+                default_daughters_index = CHILDREN_OPTIONS.index("Unknown")
 
             children_daughter_input = st.selectbox(
                 "Children (Daughters)",
@@ -294,21 +389,30 @@ def edit_contact_form(contact, index):
                 index=default_daughters_index,
                 key=f"edit_children_daughter_{index}"
             )
-            # Convert "Unknown" to None, otherwise keep the number
+            # Convert "Unknown" to None, otherwise keep the number (0 will be kept as 0)
             children_daughter = None if children_daughter_input == "Unknown" else children_daughter_input
-
 
         status = st.selectbox("Status", ["Active", "Inactive"], index=["Active", "Inactive"].index(contact["Status"]), key=f"edit_status_{index}")
         # Updated Tiering selectbox
         current_tiering_index = TIERING_OPTIONS.index(contact["Tiering"]) if contact["Tiering"] in TIERING_OPTIONS else TIERING_OPTIONS.index("Untiered")
         tiering = st.selectbox("Tiering", options=TIERING_OPTIONS, index=current_tiering_index, key=f"edit_tiering_{index}")
-        
-        category_options = ["Local Rep", "Overseas Rep", "Chief", "ID", "N/A"]
-        current_category_index = category_options.index(contact["Category"]) if contact["Category"] in category_options else category_options.index("N/A")
+
+        # UPDATED: Category options now include "Dy Chief" and "Others"
+        category_options = valid_categories # Use the global valid_categories list
+        current_category_index = category_options.index(contact["Category"]) if contact["Category"] in category_options else category_options.index("Others")
         category = st.selectbox("Category", options=category_options, index=current_category_index, key=f"edit_category_{index}")
 
+        # Comments (display only in edit form, actual adding done in view)
+        st.markdown("---")
+        st.markdown("#### Comments")
+        if contact["Comments"]:
+            for i, comment_entry in enumerate(contact["Comments"]):
+                st.markdown(f"- {comment_entry}")
+        else:
+            st.write("No comments yet.")
+        # No direct edit for comments here, they are added via the "Add Comment" button in view mode
 
-        uploaded_file = st.file_uploader("Upload new profile picture", type=["png", "jpg", "jpeg"], key=f"edit_pic_{index}")
+        uploaded_file_photo = st.file_uploader("Upload new profile picture", type=["png", "jpg", "jpeg"], key=f"edit_pic_{index}")
 
         col_update, col_cancel = st.columns(2)
         with col_update:
@@ -328,19 +432,30 @@ def edit_contact_form(contact, index):
                     old_val_to_compare = old_val if pd.notna(old_val) else None
                     new_val_to_compare = new_val if pd.notna(new_val) else None
 
-                    # Special handling for 'None' (Unknown) vs 0 in display for history
+                    # Special handling for 'None' (Unknown) in display for history
                     if field_name.startswith("Children"):
+                        # If a child count is 0, display '0', otherwise 'Unknown' for None
                         old_val_str = "Unknown" if old_val_to_compare is None else str(int(old_val_to_compare))
                         new_val_str = "Unknown" if new_val_to_compare is None else str(int(new_val_to_compare))
-                    elif isinstance(old_val_to_compare, (datetime, date)):
-                        old_val_str = old_val_to_compare.strftime("%Y-%m-%d") if old_val_to_compare else "N/A"
+                    elif field_name == "Date of Birth":
+                        old_val_str = old_val_to_compare.strftime("%Y-%m-%d") if old_val_to_compare else "Unknown" # Changed N/A to Unknown for DOB
+                        new_val_str = new_val_to_compare.strftime("%Y-%m-%d") if new_val_to_compare else "Unknown" # Changed N/A to Unknown for DOB
+                        if old_val_str != new_val_str:
+                            changes.append(f"{field_name} changed from '{old_val_str}' to '{new_val_str}'")
+                        return new_val
+                    elif field_name == "Known Age (Current Year)":
+                        old_val_str = str(int(old_val_to_compare)) if pd.notna(old_val_to_compare) else "N/A"
+                        new_val_str = str(int(new_val_to_compare)) if pd.notna(new_val_to_compare) else "N/A"
+                    elif field_name == "Comments": # Handle comments as a list
+                        old_val_str = "; ".join(old_val_to_compare) if old_val_to_compare else "N/A"
+                        new_val_str = "; ".join(new_val_to_compare) if new_val_to_compare else "N/A"
+                        if old_val_str != new_val_str: # Only append if the string representation differs
+                            changes.append(f"{field_name} changed from '{old_val_str}' to '{new_val_str}'")
+                        return new_val # Always return new_val for comments as it's modified externally
                     else:
                         old_val_str = str(old_val_to_compare) if old_val_to_compare is not None else "N/A"
-
-                    if isinstance(new_val_to_compare, (datetime, date)):
-                        new_val_str = new_val_to_compare.strftime("%Y-%m-%d") if new_val_to_compare else "N/A"
-                    else:
                         new_val_str = str(new_val_to_compare) if new_val_to_compare is not None else "N/A"
+
 
                     if old_val_str != new_val_str:
                         changes.append(f"{field_name} changed from '{old_val_str}' to '{new_val_str}'")
@@ -348,6 +463,11 @@ def edit_contact_form(contact, index):
                     return old_val # Return original old_val for unchanged fields
 
                 updated_contact["Name"] = track_change("Name", contact["Name"], name)
+                # Track changes for new birth fields
+                updated_contact["Date of Birth"] = track_change("Date of Birth", contact.get("Date of Birth", None), final_date_of_birth)
+                updated_contact["Known Age (Current Year)"] = track_change("Known Age (Current Year)", contact.get("Known Age (Current Year)", None), final_known_age_current_year)
+
+
                 updated_contact["Designation"] = track_change("Designation", contact["Designation"], designation)
                 updated_contact["Country"] = track_change("Country", contact["Country"], country)
                 updated_contact["Company"] = track_change("Company", contact["Company"], company)
@@ -371,13 +491,18 @@ def edit_contact_form(contact, index):
                 # Store None or integer based on selectbox choice
                 updated_contact["Children (Son)"] = track_change("Children (Son)", contact.get("Children (Son)", None), children_son)
                 updated_contact["Children (Daughter)"] = track_change("Children (Daughter)", contact.get("Children (Daughter)", None), children_daughter)
+
+
                 updated_contact["Status"] = track_change("Status", contact["Status"], status)
                 updated_contact["Tiering"] = track_change("Tiering", contact["Tiering"], tiering)
                 updated_contact["Category"] = track_change("Category", contact["Category"], category)
+                # Comments are updated via the separate comment box, not directly in this form.
+                # The 'track_change' for comments above only adds to history if the list contents change.
+
 
                 new_pic_bytes = None
-                if uploaded_file is not None:
-                    new_pic_bytes = uploaded_file.read()
+                if uploaded_file_photo is not None:
+                    new_pic_bytes = uploaded_file_photo.read()
                     if contact["Photo"] is None:
                         changes.append("Profile picture added")
                     elif new_pic_bytes != contact["Photo"]:
@@ -385,10 +510,10 @@ def edit_contact_form(contact, index):
                     updated_contact["Photo"] = new_pic_bytes
 
                 if changes:
-                    update_info = (f"Updated by {st.session_state.user_role} at {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}.<br>" # Use get_gmt8_now()
+                    update_info = (f"Updated by {st.session_state.user_role} at {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}.<br>"
                                    + "<br>".join(changes))
                     updated_contact["Last Updated By"] = st.session_state.user_role
-                    updated_contact["Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p") # Use get_gmt8_now()
+                    updated_contact["Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p")
                     updated_contact["History"].append(update_info)
 
                 st.session_state.contacts_df.loc[index] = updated_contact
@@ -401,13 +526,13 @@ def edit_contact_form(contact, index):
 
 def get_tier_color(Tiering):
     tier_colors = {
-        "A+": "green", # New color for A+
+        "A+": "darkgreen",
         "A": "blue",
         "B": "purple",
         "C": "orange",
         "Untiered": "gray"
     }
-    return tier_colors.get(Tiering, "gray")
+    return tier_colors.get(Tiering, "gray") # Default to gray if tiering is not recognized
 
 def get_status_color(status):
      return "green" if status == "Active" else "red"
@@ -419,8 +544,8 @@ def display_contact_card(contact, index):
         edit_contact_form(contact, index)
     else:
         # Wrap the entire contact card display and action buttons within a single st.container()
-        with st.container(border=True): # border=True adds a visual boundary for the container
-            
+        with st.container(border=True):
+
             # --- Contact Card HTML Display (unchanged from original) ---
             posting_date_display = contact['Posting Date']
             formatted_posting_date = ""
@@ -451,6 +576,19 @@ def display_contact_card(contact, index):
             else:
                 formatted_deposted_date = "N/A"
 
+            # Format Date of Birth for display - UPDATED TO SHOW "UNKNOWN"
+            dob_display = contact.get("Date of Birth")
+            formatted_dob = "Unknown" # Default to "Unknown"
+            if pd.notnull(dob_display) and dob_display != 'N/A': # Still check N/A for legacy data
+                if isinstance(dob_display, str):
+                    try:
+                        dt_obj = pd.to_datetime(dob_display)
+                        formatted_dob = dt_obj.strftime('%d %b %y')
+                    except ValueError:
+                        pass # Keep "Unknown" if parsing fails
+                elif isinstance(dob_display, (datetime, date)):
+                    formatted_dob = dob_display.strftime('%d %b %y')
+
 
             image_bytes = contact['Photo']
             if image_bytes is not None and isinstance(image_bytes, bytes):
@@ -473,51 +611,54 @@ def display_contact_card(contact, index):
             children_parts = []
 
             # Process sons
-            if pd.notna(num_sons_raw) and num_sons_raw is not None:
+            # Only add to parts if the number is greater than 0
+            if pd.notna(num_sons_raw) and num_sons_raw is not None and int(num_sons_raw) > 0:
                 num_sons = int(num_sons_raw)
-                if num_sons > 0:
-                    children_parts.append(f"{num_sons} Son{'s' if num_sons > 1 else ''}")
-            # Else, if it's None or NaN, we treat it as Unknown, but only display 'Unknown' if both are unknown
-            
+                children_parts.append(f"{num_sons} Son{'s' if num_sons > 1 else ''}")
+
             # Process daughters
-            if pd.notna(num_daughters_raw) and num_daughters_raw is not None:
+            # Only add to parts if the number is greater than 0
+            if pd.notna(num_daughters_raw) and num_daughters_raw is not None and int(num_daughters_raw) > 0:
                 num_daughters = int(num_daughters_raw)
-                if num_daughters > 0:
-                    children_parts.append(f"{num_daughters} Daughter{'s' if num_daughters > 1 else ''}")
-            # Else, if it's None or NaN, we treat it as Unknown, but only display 'Unknown' if both are unknown
+                children_parts.append(f"{num_daughters} Daughter{'s' if num_daughters > 1 else ''}")
 
             # Determine final display string
-            # If both are None/NaN OR if both are 0, display "Unknown" for clarity if no actual children counts are positive.
-            # However, with the new CHILDREN_OPTIONS, 0 is no longer an explicit choice, so only None/NaN for "Unknown"
+            # If both are None/NaN, display "Unknown"
             if (pd.isna(num_sons_raw) or num_sons_raw is None) and \
                (pd.isna(num_daughters_raw) or num_daughters_raw is None):
                 children_display = "Unknown"
-            elif not children_parts: # This means both are 0, which is now ambiguous in terms of user input, but still means 'None' children.
-                children_display = "None" # Keep as "None" if values are actually 0
+            # If no children parts (meaning both are 0 or one is 0 and other is unknown/None)
+            elif not children_parts:
+                children_display = "None"
             else:
                 children_display = ", ".join(children_parts)
+
+            # Calculate age for display
+            age = calculate_age(contact.get("Date of Birth"), contact.get("Known Age (Current Year)"))
+            # Age display format
+            age_display = f"(Age {age} years)" if age is not None else "(Age unknown)"
 
 
             # Define the gradient background for the card
             # Going from white to silver
-            card_background_gradient = "linear-gradient(to right, #ffffff, #d0d0d0)" 
+            card_background_gradient = "linear-gradient(to right, #ffffff, #d0d0d0)"
             # The border color should still match one of the gradient colors
             card_border_color = "#e0e0e0" # A very light gray/silver for the border
 
             st.markdown(
                 f"""
                 <div style="
-                    border-radius: 10px; 
+                    border-radius: 10px;
                     border: 1px solid {card_border_color};
-                    padding: 15px; 
+                    padding: 15px;
                     background: {card_background_gradient};
-                    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.2); 
+                    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.2);
                 ">
                     <div style="display: flex; align-items: center; gap: 20px;">
                         <img src="data:image/png;base64,{image_base64}" style="border-radius: 50%; width: 100px; height: 100px; object-fit: cover;">
                         <div style="flex: 1;">
                             <h3 style="margin: 0; font-size: 20px; color: #000000;">
-                                {contact['Name']}
+                                {contact['Name']} {age_display}
                             </h3>
                             <i><h4 style="margin: 0; font-size: 16px; color: #000000;">
                                 {contact['Designation']} , {contact['Company']}
@@ -534,58 +675,95 @@ def display_contact_card(contact, index):
                         </div>
                     </div>
                     <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
-                        <div style="flex: 1; min-width: 150px; color: #000000">
+                        <div style="flex: 1; min-width: 200px; color: #000000">
+                            <p><b>Date of Birth:</b> {formatted_dob}</p>
                             <p><b>Country:</b> {contact['Country']}</p>
-                            <p><b>Phone Number.:</b> {contact['Phone Number']}</p>
-                            <p><b>Office Number.:</b> {contact['Office Number']}</p>
+                            <p><b>Phone Number:</b> {contact['Phone Number']}</p>
+                            <p><b>Office Number:</b> {contact['Office Number']}</p>
                             <p><b>Email Address:</b> {contact.get('Email Address', 'N/A')}</p>
-                            <p><b>Vehicle(s):</b> {contact['Vehicle']}</p>
                             <p><b>Address:</b> {contact['Office Address']}</p>
+                            <p><b>Home Address:</b> {contact['Home Address']}</p>
                         </div>
-                        <div style="flex: 1; min-width: 150px; color: #000000">
+                        <div style="flex: 1; min-width: 200px; color: #000000">
                             <p><b>Posting Date:</b> {formatted_posting_date}</p>
                             <p><b>De-posted Date:</b> {formatted_deposted_date}</p>
-                            <p><b>Golf:</b> {contact['Golf']}</p>
-                            <p><b>Golf Handicap:</b> {contact['Golf Handicap']}</p>
                             <p><b>Marital Status:</b> {contact.get('Marital Status', 'N/A')}</p>
                             <p><b>Children:</b> {children_display}</p>
+                            <p><b>Vehicle(s):</b> {contact['Vehicle']}</p>
+                            <p><b>Golf:</b> {contact['Golf']}</p>
+                            <p><b>Golf Handicap:</b> {contact['Golf Handicap']}</p>
                         </div>
-                        <div style="flex: 1; min-width: 150px; color: #000000">
+                        <div style="flex: 1; min-width: 200px; color: #000000">
+                            <p><b>Hobbies:</b> {contact['Hobbies']}</p>
                             <p><b>Dietary Restrictions:</b> {contact['Dietary Restrictions']}</p>
                             <p><b>Reception:</b> {contact['Reception']}</p>
                             <p><b>Festivity:</b> {contact['Festivities']}</p>
-                        </div>
-                        <div style="flex: 1; min-width: 150px; color: #000000">
-                            <p><b>Interest(s):</b> {contact['Hobbies']}</p>
                         </div>
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
-            
+
             # Add a small vertical space here
-            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True) # Adds a 10px top margin
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
             # --- Last Updated Info (unchanged from original) ---
             if contact["Last Updated On"]:
                     st.info(f"Last updated by {contact['Last Updated By']} at {contact['Last Updated On']}")
 
-            # --- Edit and View History Buttons (unchanged from original) ---
-            if st.session_state.user_role == "admin":
-                col_edit, col_history = st.columns(2)
-                with col_edit:
-                    if st.button(f"Edit {contact['Name']}", key=f"edit_button_{index}"):
-                        st.session_state.editing_contact_index = index
-                        st.rerun()
-                with col_history:
-                    # Keep View History in an expander for brevity
-                    with st.expander("View History"):
-                        if contact["History"]:
-                            for i, history_entry in enumerate(contact["History"]):
-                                st.markdown(f"**{i+1}.** {history_entry}", unsafe_allow_html=True)
+            # --- New Comment and History Sections (side-by-side) ---
+            col_comment, col_history = st.columns(2)
+
+            with col_comment:
+                with st.expander("Add/View Comments"):
+                    comment_input = st.text_area("Add a new comment", key=f"comment_input_{index}")
+                    if st.button("Add Comment", key=f"add_comment_button_{index}"):
+                        if comment_input.strip():
+                            new_comment_entry = (
+                                f"**{st.session_state.user_role.capitalize()}** "
+                                f"on {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}: "
+                                f"{comment_input.strip()}"
+                            )
+                            # Ensure comments field is a list
+                            if not isinstance(contact["Comments"], list):
+                                contact["Comments"] = []
+                            contact["Comments"].append(new_comment_entry)
+
+                            # Update last updated info and history for comments as well
+                            update_info = (f"Updated by {st.session_state.user_role} at {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}. "
+                                           f"New comment added: '{comment_input.strip()}'")
+                            contact["Last Updated By"] = st.session_state.user_role
+                            contact["Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p")
+                            contact["History"].append(update_info)
+
+                            st.session_state.contacts_df.loc[index] = contact
+                            st.success("Comment added!")
+                            st.rerun() # Rerun to clear the text area and show new comment
                         else:
-                            st.write("No history available.")
+                            st.warning("Please enter a comment to add.")
+
+                    if contact["Comments"]:
+                        st.markdown("---")
+                        st.markdown("##### Existing Comments:")
+                        for i, comment_entry in enumerate(contact["Comments"]):
+                            st.markdown(f"- {comment_entry}")
+                    else:
+                        st.write("No comments yet for this contact.")
+
+            with col_history:
+                with st.expander("**View Change History**"): # Changed label here
+                    if contact["History"]:
+                        for i, history_entry in enumerate(contact["History"]):
+                            st.markdown(f"**{i+1}.** {history_entry}", unsafe_allow_html=True)
+                    else:
+                        st.write("No history available.")
+
+            # --- Edit Button (admin only) ---
+            if st.session_state.user_role == "admin":
+                if st.button(f"Edit {contact['Name']}'s Info", key=f"edit_button_{index}"):
+                    st.session_state.editing_contact_index = index
+                    st.rerun()
 
 
 # --- Add New Contact ➕ ---
@@ -594,8 +772,42 @@ def add_new_contact_form():
 
     with st.form(key="add_contact_form"):
         name = st.text_input("Name*")
+
+        # New fields for Date of Birth / Known Age (Current Year) - MOVED UP
+        col_add_dob, col_add_known_age = st.columns(2)
+        with col_add_dob:
+            date_of_birth_add = st.date_input(
+                "Date of Birth (Optional)",
+                value=None, # Default to None for new contacts
+                key="add_dob",
+                min_value=date(1900,1,1),
+                max_value=date.today()
+            )
+            # If user selects the default minimum date, treat it as unset for DOB
+            final_date_of_birth_add = date_of_birth_add if pd.notna(date_of_birth_add) and date_of_birth_add != date(1900,1,1) else None
+
+        with col_add_known_age:
+            known_age_input_add = st.text_input(
+                f"Age (as of {date.today().year}, Optional)", # Display current year in label
+                value="",
+                key="add_known_age",
+                help="Enter the contact's current age if their exact Date of Birth is unknown. This will auto-update yearly."
+            )
+            known_age_current_year_add = None
+            if known_age_input_add.strip():
+                try:
+                    known_age_current_year_add = int(known_age_input_add.strip())
+                    if not (0 <= known_age_current_year_add <= 120): # Reasonable age range
+                        st.error("Age must be between 0 and 120.")
+                        known_age_current_year_add = None
+                except ValueError:
+                    st.error("Invalid Age. Please enter a whole number.")
+
+            final_known_age_current_year_add = known_age_current_year_add
+
+
         designation = st.text_input("Designation*")
-        
+
         # Country Dropdown
         country = st.selectbox("Country*", options=STANDARD_COUNTRIES, index=0)
 
@@ -609,7 +821,7 @@ def add_new_contact_form():
         home_address = st.text_area("Home Address")
         hobbies = st.text_input("Hobbies")
         dietary_restrictions = st.text_input("Dietary Restrictions")
-        
+
         # Festivities Multiselect + Text Area
         selected_festivities = st.multiselect(
             "Festivities (select all that apply)",
@@ -664,11 +876,11 @@ def add_new_contact_form():
             )
             children_daughter = None if children_daughter_input == "Unknown" else children_daughter_input
 
-
         status = st.selectbox("Status", ["Active", "Inactive"], index=0)
         # Updated Tiering selectbox
         tiering = st.selectbox("Tiering", options=TIERING_OPTIONS, index=TIERING_OPTIONS.index("Untiered")) # Default to Untiered
-        category = st.selectbox("Category", options=["Local Rep", "Overseas Rep", "Chief", "ID", "N/A"], index=4) # Default to N/A
+        # UPDATED: Category options now include "Dy Chief" and "Others", with "Others" as default
+        category = st.selectbox("Category", options=valid_categories, index=valid_categories.index("Others"))
         profile_picture = st.file_uploader("Upload Profile Picture", type=["png", "jpg", "jpeg"])
 
         col_add, col_cancel = st.columns(2)
@@ -706,15 +918,18 @@ def add_new_contact_form():
                     "Reception": reception_combined,
                     "Marital Status": marital_status,
                     # Store None if the user selected "Unknown", or the integer value
-                    "Children (Son)": children_son, 
-                    "Children (Daughter)": children_daughter, 
+                    "Children (Son)": children_son,
+                    "Children (Daughter)": children_daughter,
+                    "Date of Birth": final_date_of_birth_add,
+                    "Known Age (Current Year)": final_known_age_current_year_add,
                     "Status": status,
                     "Tiering": tiering,
                     "Category": category,
                     "Photo": new_profile_pic_bytes,
+                    "Comments": [], # New contacts start with no comments
                     "Last Updated By": st.session_state.user_role if st.session_state.user_role else "Unknown",
-                    "Last Updated On": get_gmt8_now().strftime("%d %b %y, %I:%M %p"), # Use get_gmt8_now()
-                    "History": [f"Created by {st.session_state.user_role if st.session_state.user_role else 'Unknown'} at {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}"] # Use get_gmt8_now()
+                    "Last Updated On": get_gmt8_now().strftime("%d %b %y, %I:%M %p"),
+                    "History": [f"Created by {st.session_state.user_role if st.session_state.user_role else 'Unknown'} at {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}"]
                 }
                 st.session_state.contacts_df = pd.concat([st.session_state.contacts_df, pd.DataFrame([new_contact])], ignore_index=True)
                 st.sidebar.success("Contact added successfully!")
@@ -726,7 +941,6 @@ def add_new_contact_form():
 # --- 4. Admin Actions (Download & Upload) ---
 def admin_actions():
     if st.session_state.user_role == "admin":
-        st.sidebar.markdown("---")
         st.sidebar.title("Admin Actions")
 
         # --- Manual Add Contact button (moved to top of admin section) ---
@@ -747,7 +961,13 @@ def admin_actions():
                 df_for_download[col] = df_for_download[col].apply(
                     lambda x: x.strftime("%Y-%m-%d") if isinstance(x, (datetime, date)) else ""
                 )
-        
+        # Special handling for Date of Birth to export "Unknown"
+        if "Date of Birth" in df_for_download.columns:
+            df_for_download["Date of Birth"] = df_for_download["Date of Birth"].apply(
+                lambda x: x.strftime("%Y-%m-%d") if isinstance(x, (datetime, date)) else "Unknown" # Export "Unknown"
+            )
+
+
         # Convert children columns to string for download, handling None as "Unknown" and 0 as "0"
         for col in ["Children (Son)", "Children (Daughter)"]:
             if col in df_for_download.columns:
@@ -755,9 +975,20 @@ def admin_actions():
                     lambda x: "Unknown" if pd.isna(x) or x is None else str(int(x))
                 )
 
+        # Convert Known Age (Current Year) to string for download
+        if "Known Age (Current Year)" in df_for_download.columns:
+            df_for_download["Known Age (Current Year)"] = df_for_download["Known Age (Current Year)"].apply(
+                lambda x: str(int(x)) if pd.notna(x) else ""
+            )
+
+        # Handle 'History' and 'Comments' for CSV export
         df_for_download['History'] = df_for_download['History'].apply(
             lambda x: "\n".join(x) if isinstance(x, list) else ""
         )
+        df_for_download['Comments'] = df_for_download['Comments'].apply(
+            lambda x: "\n".join(x) if isinstance(x, list) else ""
+        )
+
 
         df_for_download['Profile Picture (Base64)'] = df_for_download['Photo'].apply(
             lambda x: base64.b64encode(x).decode('utf-8') if x is not None and isinstance(x, bytes) else ''
@@ -767,17 +998,16 @@ def admin_actions():
         df_for_download = df_for_download.drop(columns=["Photo"], errors='ignore')
 
         csv_full_data = df_for_download.to_csv(index=False).encode('utf-8')
-        
+
         st.sidebar.download_button(
             label="Download All Contacts (CSV)",
             data=csv_full_data,
             file_name="all_contacts_data.csv",
             mime="text/csv",
-            help="Downloads all contact data, including Base64 encoded profile pictures and change history."
+            help="Downloads all contact data, including Base64 encoded profile pictures."
         )
 
-        st.sidebar.markdown("---")
-        
+
         # --- Download Template within an expander ---
         with st.sidebar.expander("Download Template"):
             st.write("Download a CSV template to fill in new contact data.")
@@ -785,7 +1015,7 @@ def admin_actions():
             template_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
             # Drop columns that are typically not filled in by user for template
             template_df = template_df.drop(columns=["Photo", "Last Updated By", "Last Updated On", "History"], errors='ignore')
-            
+
             # Add some example values to guide the user (optional, but very helpful)
             example_row = {
                 "Name": "John Doe",
@@ -807,18 +1037,22 @@ def admin_actions():
                 "Golf Handicap": "18",
                 "Reception": "NYR, ALSE",
                 "Marital Status": "Single",
-                "Children (Son)": "1 or Unknown", # Updated guidance
-                "Children (Daughter)": "1 or Unknown", # Updated guidance
-                "Status": "Active", # Guide for expected values
-                "Tiering": "A",
-                "Category": "Local Rep"
+                "Children (Son)": "1 or 0 or Unknown",
+                "Children (Daughter)": "1 or 0 or Unknown",
+                "Date of Birth": "YYYY-MM-DD or Unknown (optional)", # Updated template guidance
+                "Known Age (Current Year)": "Age in current year (optional)",
+                "Status": "Active",
+                "Tiering": "A+",
+                # UPDATED: Template now includes new categories for guidance
+                "Category": "Local Rep, Overseas Rep, Chief, Dy Chief, ID, Others",
+                "Comments": "Initial comment or leave blank" # Added comment guidance
             }
             # Append the example row to the template
             template_df = pd.concat([template_df, pd.DataFrame([example_row])], ignore_index=True)
 
 
             csv_template = template_df.to_csv(index=False).encode('utf-8')
-            
+
             st.download_button( # Note: use st.download_button directly inside expander
                 label="Download CSV Template",
                 data=csv_template,
@@ -841,22 +1075,26 @@ def admin_actions():
                 if st.button("Load Uploaded Template"): # Note: use st.button directly inside expander
                     try:
                         new_contacts_df = pd.read_csv(uploaded_file)
-                        
+
                         # --- Data Cleaning and Harmonization for Uploaded Template ---
                         # 1. Standardize column names (optional, but good practice)
                         new_contacts_df.columns = [col.strip() for col in new_contacts_df.columns]
-                        
+
                         harmonized_df = pd.DataFrame(columns=EXPECTED_COLUMNS)
                         for col in EXPECTED_COLUMNS:
                             if col in new_contacts_df.columns:
                                 harmonized_df[col] = new_contacts_df[col]
                             else:
                                 # Set appropriate defaults for columns not in the template or expected from user
-                                if col in ["Children (Son)", "Children (Daughter)"]:
-                                    harmonized_df[col] = None # Default to None (Unknown) for upload
+                                if col in ["Children (Son)", "Children (Daughter)", "Known Age (Current Year)"]:
+                                    harmonized_df[col] = None # Default to None for upload
+                                elif col == "Date of Birth": # For DOB, ensure it handles "Unknown" from template
+                                    harmonized_df[col] = None
                                 elif col in ["Last Updated By", "Last Updated On"]:
                                     harmonized_df[col] = None # Will be filled later
                                 elif col == "History":
+                                    harmonized_df[col] = [[] for _ in range(len(new_contacts_df))]
+                                elif col == "Comments": # Initialize comments as empty list for upload
                                     harmonized_df[col] = [[] for _ in range(len(new_contacts_df))]
                                 elif col == "Photo":
                                     harmonized_df[col] = None
@@ -868,21 +1106,44 @@ def admin_actions():
                             if date_col in harmonized_df.columns:
                                 harmonized_df[date_col] = pd.to_datetime(harmonized_df[date_col], errors='coerce').dt.date
 
-                        # Handle children columns specifically for upload: '0' becomes None, numbers become int, 'unknown' becomes None
+                        # Handle Date of Birth specifically for upload: "Unknown" or empty becomes None
+                        if "Date of Birth" in harmonized_df.columns:
+                            harmonized_df["Date of Birth"] = harmonized_df["Date of Birth"].astype(str).apply(
+                                lambda x: pd.to_datetime(x, errors='coerce').date() if x.strip().lower() not in ['unknown', 'nan', ''] else None
+                            )
+
+
+                        # Handle children columns specifically for upload: '0' becomes 0, numbers becomes int, 'unknown' becomes None
                         for child_col in ["Children (Son)", "Children (Daughter)"]:
                             if child_col in harmonized_df.columns:
                                 harmonized_df[child_col] = harmonized_df[child_col].astype(str).apply(
-                                    lambda x: None if x.strip().lower() in ['unknown', 'nan', '', '0'] else pd.to_numeric(x, errors='coerce')
+                                    # Convert to None if 'unknown' or empty, otherwise try to convert to number
+                                    lambda x: None if x.strip().lower() in ['unknown', 'nan', ''] else pd.to_numeric(x, errors='coerce')
                                 )
                                 # Convert to int if not None, otherwise keep as None
                                 harmonized_df[child_col] = harmonized_df[child_col].apply(lambda x: int(x) if pd.notna(x) else None)
+
+                        # Handle Known Age (Current Year) specifically for upload
+                        if "Known Age (Current Year)" in harmonized_df.columns:
+                            harmonized_df["Known Age (Current Year)"] = harmonized_df["Known Age (Current Year)"].astype(str).apply(
+                                lambda x: pd.to_numeric(x, errors='coerce') if x.strip() and x.strip().lower() not in ['nan', ''] else None
+                            )
+                            harmonized_df["Known Age (Current Year)"] = harmonized_df["Known Age (Current Year)"].apply(lambda x: int(x) if pd.notna(x) else None)
+
 
                         for list_col in ["Festivities", "Reception"]:
                             if list_col in harmonized_df.columns:
                                 harmonized_df[list_col] = harmonized_df[list_col].astype(str).replace('nan', '').apply(
                                     lambda x: ", ".join(sorted([item.strip() for item in x.split(',') if item.strip()])) if x else ""
                                 )
-                        
+
+                        # Handle 'Comments' column from upload: split by newline if string, ensure list
+                        if "Comments" in harmonized_df.columns:
+                            harmonized_df["Comments"] = harmonized_df["Comments"].astype(str).replace('nan', '').apply(
+                                lambda x: [item.strip() for item in x.split('\n') if item.strip()] if x else []
+                            )
+
+
                         # Ensure essential columns are not null for new entries
                         required_cols = ["Name", "Designation", "Country", "Company"]
                         # Check if any of the required columns have nulls in the uploaded DataFrame
@@ -892,11 +1153,11 @@ def admin_actions():
                             # Set Last Updated fields and add initial history entry
                             harmonized_df["Last Updated By"] = st.session_state.user_role if st.session_state.user_role else "Unknown (Template Upload)"
                             harmonized_df["Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p")
-                            
+
                             harmonized_df["History"] = harmonized_df.apply(
                                 lambda row: row["History"] + [f"Imported by {st.session_state.user_role if st.session_state.user_role else 'Unknown'} via template upload on {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}"] , axis=1
                             )
-                            
+
                             st.session_state.contacts_df = pd.concat([st.session_state.contacts_df, harmonized_df], ignore_index=True)
                             st.success(f"Successfully loaded {len(harmonized_df)} contacts from the template!")
                             st.rerun()
@@ -916,10 +1177,10 @@ def search_and_filter(selected_category):
     all_designations = sorted(st.session_state.contacts_df["Designation"].dropna().unique().tolist())
     all_countries = sorted(st.session_state.contacts_df["Country"].dropna().unique().tolist())
     all_companies = sorted(st.session_state.contacts_df["Company"].dropna().unique().tolist())
-    
+
     # Use the new TIERING_OPTIONS for filtering
     all_tierings = TIERING_OPTIONS
-    
+
     all_golf_options = ["Yes", "No"]
 
     # Get all unique reception options from data
@@ -942,7 +1203,7 @@ def search_and_filter(selected_category):
     selected_companies = st.sidebar.multiselect("Company", options=all_companies, default=[])
     selected_tierings = st.sidebar.multiselect("Tiering", options=all_tierings, default=[])
     selected_golf = st.sidebar.multiselect("Golf", options=all_golf_options, default=[])
-    
+
     # New filters for Reception and Festivities
     selected_reception = st.sidebar.multiselect("Reception", options=all_reception_options, default=[])
     selected_festivities = st.sidebar.multiselect("Festivities", options=all_festivities_options, default=[])
@@ -966,7 +1227,7 @@ def search_and_filter(selected_category):
         filtered_df = filtered_df[filtered_df["Tiering"].isin(selected_tierings)]
     if selected_golf:
         filtered_df = filtered_df[filtered_df["Golf"].isin(selected_golf)]
-    
+
     # Apply Reception filter
     if selected_reception:
         filtered_df = filtered_df[
@@ -1017,8 +1278,8 @@ def main():
             st.write("#### Filter by Category:")
 
         with col2:
-            # Updated category_options for buttons - 'N/A' removed
-            category_options = ["All", "Local Rep", "Overseas Rep", "Chief", "ID"]
+            # UPDATED: Category options for buttons on main page
+            category_options = ["All", "Local Rep", "Overseas Rep", "Chief", "Dy Chief", "ID", "Others"]
             cols = st.columns(len(category_options))
 
             for i, category_name in enumerate(category_options):
@@ -1027,7 +1288,7 @@ def main():
                     button_style = ""
                     if category_name == st.session_state.selected_category_button:
                         button_style = "background-color: #6a0dad; color: white; border-color: #6a0dad;"
-                    
+
                     # Using markdown to create buttons with custom style
                     if st.button(category_name, key=f"cat_btn_{category_name}"):
                         st.session_state.selected_category_button = category_name
