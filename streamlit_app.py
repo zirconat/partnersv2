@@ -20,7 +20,7 @@ EXPECTED_COLUMNS = [
     "Festivities", "Vehicle", "Golf", "Golf Handicap", "Reception",
     "Marital Status", "Children (Son)", "Children (Daughter)",
     "Date of Birth", "Known Age (Current Year)",
-    "Status", "Tiering", "Category", "Photo", "Comments", # Added Comments
+    "Status", "Tiering", "Category", "Photo", "Comments",
     "Last Updated By", "Last Updated On", "History"
 ]
 
@@ -115,7 +115,8 @@ STANDARD_COUNTRIES = [
 ]
 STANDARD_COUNTRIES.sort() # Keep them sorted for easier selection
 
-RECEPTION_OPTIONS = ["ALSE", "NYR", "Others"]
+# Removed RECEPTION_OPTIONS as a fixed list; it will now be dynamically populated from data + custom inputs
+# RECEPTION_OPTIONS = ["ALSE", "NYR", "Others"]
 
 COMMON_FESTIVITIES = [
     "Chinese New Year", "Deepavali", "Christmas", "Hari Raya Puasa", "Eid al-Fitr",
@@ -134,6 +135,46 @@ CHILDREN_OPTIONS = ["Unknown", 0] + list(range(1, 11)) # Unknown, 0, 1, 2, ..., 
 # New Tiering Options
 TIERING_OPTIONS = ["A+", "A", "B", "C", "Untiered"]
 
+# --- Define Protocol Order for Categories (Still useful for filters/categorization) ---
+PROTOCOL_ORDER_CATEGORIES = [
+    "Chief",
+    "Dy Chief",
+    "Local Rep",
+    "Overseas Rep",
+    "ID",
+    "Others"
+]
+
+# --- NEW: Define Protocol Order for Designations ---
+DESIGNATION_PROTOCOL_RANKS = {
+    # Keywords are case-insensitive. Lower rank number means higher protocol.
+    "chief": 1,
+    "deputy chief": 2,
+    "director": 3,
+    "head of": 4,
+    "manager": 5,
+    "lead": 6,
+    "officer": 7,
+    "consultant": 8,
+    "business development": 9,
+    "marketing lead": 10,
+    "specialist": 11,
+    "executive": 12,
+    "writer": 13,
+    "organizer": 14,
+    "tester": 15,
+}
+# Default rank for designations not matching any keyword (put them at the bottom)
+DEFAULT_DESIGNATION_RANK = 99
+
+# Global variable for fields that can be bulk updated
+BULK_UPDATE_FIELDS = [
+    "Office Address",
+    "Festivities",
+    "Vehicle",
+    "Reception",
+    "Tiering"
+]
 
 # --- 1. User Authentication ---
 def login():
@@ -159,15 +200,25 @@ def logout():
         st.rerun()
 
 # --- Helper function to process multi-select and custom text inputs ---
-def process_multi_text_input(selected_options, custom_text):
+def process_multi_text_input(selected_options, custom_text, existing_values_str):
     combined = []
+
+    # Start with selected options from the multiselect
     if selected_options:
         combined.extend(selected_options)
 
+    # Add custom text entries
     if custom_text:
-        # Split by comma and clean up spaces, then add to combined
         new_entries = [item.strip() for item in custom_text.split(',') if item.strip()]
         for entry in new_entries:
+            if entry not in combined:
+                combined.append(entry)
+
+    # Add any existing entries from the contact's data that weren't in selected_options or custom_text
+    # This handles cases where a value was in the data but not in the standard list or custom input
+    if pd.notna(existing_values_str) and isinstance(existing_values_str, str):
+        existing_list = [item.strip() for item in existing_values_str.split(',') if item.strip()]
+        for entry in existing_list:
             if entry not in combined:
                 combined.append(entry)
 
@@ -183,18 +234,31 @@ def calculate_age(dob, known_age_current_year):
         return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
     elif pd.notna(known_age_current_year) and isinstance(known_age_current_year, (int, float)):
         # Calculate approximate age from Known Age (Current Year)
-        # This assumes the 'known_age_current_year' was provided for the year it was last updated.
-        # To make it auto-update, we need to consider the current year relative to when it was recorded.
-        # For simplicity and auto-update: if `Known Age (Current Year)` is `X`,
-        # it means the person is X years old in the CURRENT year.
-        # This simplifies the logic to just returning the known_age_current_year
-        # as it is inherently meant to be *the current age*.
         return int(known_age_current_year)
     return None # Return None if no valid birth info
+
+# --- NEW: Helper function to get the numerical rank of a designation ---
+def get_designation_protocol_rank(designation_str):
+    if not isinstance(designation_str, str):
+        return DEFAULT_DESIGNATION_RANK # Return default for non-string or NaN
+
+    designation_lower = designation_str.lower()
+    for keyword, rank in DESIGNATION_PROTOCOL_RANKS.items():
+        if keyword in designation_lower:
+            return rank
+    return DEFAULT_DESIGNATION_RANK # If no keyword matches
+
 
 # --- 2. Contact Card Display and Editing ---
 def edit_contact_form(contact, index):
     st.markdown("<h4>Edit Contact</h4>", unsafe_allow_html=True)
+
+    # Pre-calculate counts of other contacts in the same company
+    other_contacts_in_company = st.session_state.contacts_df[
+        (st.session_state.contacts_df["Company"] == contact["Company"]) &
+        (st.session_state.contacts_df.index != index)
+    ]
+
     with st.form(key=f"edit_form_{index}"):
         name = st.text_input("Name*", value=contact["Name"], key=f"edit_name_{index}")
 
@@ -202,14 +266,14 @@ def edit_contact_form(contact, index):
         col_dob, col_known_age = st.columns(2)
         with col_dob:
             current_dob_value = contact.get("Date of Birth")
-            if isinstance(current_dob_value, (datetime, date)):
+            if isinstance(current_dob_value, (date, datetime)): # Check for date or datetime objects
                 dob_value = current_dob_value
-            elif pd.notna(current_dob_value):
+            elif pd.notna(current_dob_value): # If not null but not a date/datetime, try parsing
                 try:
                     dob_value = pd.to_datetime(current_dob_value).date()
-                except ValueError:
+                except ValueError: # If parsing fails, set to None
                     dob_value = None
-            else:
+            else: # If NaN or None, set to None
                 dob_value = None
 
             date_of_birth = st.date_input(
@@ -225,6 +289,7 @@ def edit_contact_form(contact, index):
 
         with col_known_age:
             current_known_age_value = contact.get("Known Age (Current Year)")
+            # Convert to int then str for display if it's a number, else empty string
             known_age_str = str(int(current_known_age_value)) if pd.notna(current_known_age_value) else ""
             known_age_input = st.text_input(
                 f"Age (as of {date.today().year}, Optional)", # Display current year in label
@@ -259,49 +324,81 @@ def edit_contact_form(contact, index):
         email_address_value = contact.get("Email Address", "") # Default to empty string if missing
         email_address = st.text_input("Email Address", value=email_address_value, key=f"edit_email_{index}")
 
-        initial_posting_date = contact["Posting Date"]
-        if isinstance(initial_posting_date, (datetime, date)):
-            posting_date_value = initial_posting_date
-        elif pd.notna(initial_posting_date) and initial_posting_date != 'N/A':
-            try:
-                posting_date_value = pd.to_datetime(initial_posting_date).date()
-            except ValueError:
-                posting_date_value = None
-            except TypeError: # Handle cases where it might be a list or other unexpected type
-                posting_date_value = None
-        else:
-            posting_date_value = None
+        # === START BULK UPDATE FIELD SECTION ===
+        bulk_apply_states = {} # Dictionary to store checkbox states for bulk updates
 
-        posting_date = st.date_input("Posting Date", value=posting_date_value, key=f"edit_posting_date_{index}")
+        # MODIFIED add_bulk_checkboxes function to combine question and checkbox, always display names
+        def add_bulk_checkboxes(field_name, field_label_for_display):
+            if not other_contacts_in_company.empty:
+                bulk_apply_states[f"{field_name}_company"] = st.checkbox(
+                    f"Apply this **{field_label_for_display}** to {len(other_contacts_in_company)} other(s) in {contact['Company']}?",
+                    key=f"apply_{field_name}_company_{index}",
+                    help=f"Tick this to update this {field_label_for_display} for all listed contacts in {contact['Company']}."
+                )
+                st.markdown("###### Affected Contacts:")
+                for i, other_contact in enumerate(other_contacts_in_company.iterrows()):
+                    st.write(f"{i+1}. {other_contact[1]['Name']} ({other_contact[1]['Designation']})")
+            else:
+                st.info(f"No other contacts in {contact['Company']} to apply {field_label_for_display} to.")
+
+
+        initial_posting_date = contact["Posting Date"]
+        formatted_posting_date_value = None
+        if isinstance(initial_posting_date, (datetime, date)):
+            formatted_posting_date_value = initial_posting_date
+        elif pd.notnull(initial_posting_date) and initial_posting_date != 'N/A':
+            try:
+                dt_obj = pd.to_datetime(initial_posting_date)
+                formatted_posting_date_value = dt_obj.date()
+            except ValueError:
+                formatted_posting_date_value = None
+            except TypeError: # Handle cases where it might be a list or other unexpected type
+                formatted_posting_date_value = None
+        else:
+            formatted_posting_date_value = None
+
+        posting_date = st.date_input("Posting Date", value=formatted_posting_date_value, key=f"edit_posting_date_{index}")
+        # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Posting Date", "Posting Date")
+
 
         initial_deposted_date = contact["Deposted Date"]
+        formatted_deposted_date_value = None
         if isinstance(initial_deposted_date, (datetime, date)):
-            deposted_date_value = initial_deposted_date
-        elif pd.notna(initial_deposted_date) and initial_deposted_date != 'N/A':
+            formatted_deposted_date_value = initial_deposted_date
+        elif pd.notnull(initial_deposted_date) and initial_deposted_date != 'N/A':
             try:
-                deposted_date_value = pd.to_datetime(initial_deposted_date).date()
+                dt_obj = pd.to_datetime(initial_deposted_date)
+                formatted_deposted_date_value = dt_obj.date()
             except ValueError:
-                deposted_date_value = None
+                formatted_deposted_date_value = None
             except TypeError:
-                deposted_date_value = None
+                formatted_deposted_date_value = None
         else:
-            deposted_date_value = None
+            formatted_deposted_date_value = None
 
-        deposted_date = st.date_input("Deposted Date", value=deposted_date_value, key=f"edit_deposted_date_{index}")
+        deposted_date = st.date_input("Deposted Date", value=formatted_deposted_date_value, key=f"edit_deposted_date_{index}")
+        # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Deposted Date", "De-posted Date")
 
 
         office_address = st.text_area("Office Address", value=contact["Office Address"], key=f"edit_office_address_{index}")
-        home_address = st.text_area("Home Address", value=contact["Home Address"], key=f"edit_home_address_{index}")
-        hobbies = st.text_input("Hobbies", value=contact["Hobbies"], key=f"edit_hobbies_{index}")
-        dietary_restrictions = st.text_input("Dietary Restrictions", value=contact["Dietary Restrictions"], key=f"edit_dietary_restrictions_{index}")
+        add_bulk_checkboxes("Office Address", "Office Address")
 
-        # Festivities Multiselect + Text Area
+        home_address = st.text_area("Home Address", value=contact["Home Address"], key=f"edit_home_address_{index}")
+        # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Home Address", "Home Address")
+
+        hobbies = st.text_input("Hobbies", value=contact["Hobbies"], key=f"edit_hobbies_{index}")
+        # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Hobbies", "Hobbies")
+
+        dietary_restrictions = st.text_input("Dietary Restrictions", value=contact["Dietary Restrictions"], key=f"edit_dietary_restrictions_{index}")
+        # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Dietary Restrictions", "Dietary Restrictions")
+
+        # Festivities Multiselect + Text Area - UPDATED
         current_festivities_list = [f.strip() for f in str(contact["Festivities"]).split(',') if f.strip()] if pd.notna(contact["Festivities"]) else []
 
-        # Determine default selected options for multiselect
+        # Determine default selected options for multiselect: only those in COMMON_FESTIVITIES
         default_selected_festivities = [f for f in current_festivities_list if f in COMMON_FESTIVITIES]
 
-        # Determine custom text part
+        # Determine custom text part: anything NOT in COMMON_FESTIVITIES
         custom_festivities_text = ", ".join([f for f in current_festivities_list if f not in COMMON_FESTIVITIES])
 
         selected_festivities = st.multiselect(
@@ -315,30 +412,51 @@ def edit_contact_form(contact, index):
             value=custom_festivities_text,
             key=f"edit_festivities_custom_{index}"
         )
-        festivities_combined = process_multi_text_input(selected_festivities, custom_festivities_input)
-
+        # Use the updated process_multi_text_input
+        festivities_combined = process_multi_text_input(selected_festivities, custom_festivities_input, contact["Festivities"])
+        add_bulk_checkboxes("Festivities", "Festivities") # Bulk checkbox for Festivities
 
         vehicle = st.text_input("Vehicle", value=contact["Vehicle"], key=f"edit_vehicle_{index}")
+        add_bulk_checkboxes("Vehicle", "Vehicle")
 
         # Golf selection field - Always visible
         golf = st.selectbox("Golf",["Yes", "No"], index=0 if contact["Golf"] == "Yes" else 1, key=f"edit_golf_{index}")
+        # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Golf", "Golf")
 
         # Golf Handicap - Always visible
         handicap = st.text_input("Golf Handicap", value=contact["Golf Handicap"], key=f"edit_golf_handicap_{index}")
+        # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Golf Handicap", "Golf Handicap")
 
-        # Reception Multiselect
+        # Reception Multiselect + Text Area - UPDATED
         current_reception_list = [r.strip() for r in str(contact["Reception"]).split(',') if r.strip()] if pd.notna(contact["Reception"]) else []
 
-        reception = st.multiselect(
-            "Reception",
-            options=RECEPTION_OPTIONS,
-            default=current_reception_list,
-            key=f"edit_reception_{index}"
-        )
-        reception_combined = ", ".join(sorted(reception)) if reception else "" # Ensure sorted for consistent string
+        # We'll use a dynamic list for the multiselect options for Reception.
+        # This will include standard options and any unique options already in the data.
+        all_reception_options_for_multiselect = sorted(list(set(RECEPTION_OPTIONS_MASTER + current_reception_list))) # Use the MASTER list
 
-        # Marital Status Dropdown (New Field)
-        # Access 'Marital Status' safely
+        # Determine default selected options for multiselect
+        default_selected_reception = [r for r in current_reception_list if r in RECEPTION_OPTIONS_MASTER]
+
+        # Determine custom text part
+        custom_reception_text = ", ".join([r for r in current_reception_list if r not in RECEPTION_OPTIONS_MASTER])
+
+
+        selected_reception = st.multiselect(
+            "Reception (select all that apply)",
+            options=RECEPTION_OPTIONS_MASTER, # Provide the fixed, master list
+            default=default_selected_reception,
+            key=f"edit_reception_select_{index}"
+        )
+        custom_reception_input = st.text_area(
+            "Or enter custom reception types (comma-separated):",
+            value=custom_reception_text,
+            key=f"edit_reception_custom_{index}"
+        )
+        # Use the updated process_multi_text_input
+        reception_combined = process_multi_text_input(selected_reception, custom_reception_input, contact["Reception"])
+        add_bulk_checkboxes("Reception", "Reception") # Bulk checkbox for Reception
+
+        # Marital Status Dropdown (New Field) - NOT IN BULK_UPDATE_FIELDS, so no checkboxes
         marital_status_value = contact.get("Marital Status", MARITAL_STATUS_OPTIONS[0]) # Default to first option
         current_marital_status_index = MARITAL_STATUS_OPTIONS.index(marital_status_value) if marital_status_value in MARITAL_STATUS_OPTIONS else 0
         marital_status = st.selectbox(
@@ -348,18 +466,17 @@ def edit_contact_form(contact, index):
             key=f"edit_marital_status_{index}"
         )
 
-        # Children Quantity (UPDATED TO SELECTBOX)
+        # Children Quantity (UPDATED TO SELECTBOX) - NOT IN BULK_UPDATE_FIELDS
         col_son, col_daughter = st.columns(2)
         with col_son:
-            # Determine initial index for "Children (Son)" selectbox
             current_sons_value = contact.get("Children (Son)")
-            if pd.isna(current_sons_value) or current_sons_value is None: # Covers None and NaN
+            if pd.isna(current_sons_value) or current_sons_value is None:
                 default_sons_index = CHILDREN_OPTIONS.index("Unknown")
-            elif int(current_sons_value) == 0: # Explicitly check for 0
+            elif int(current_sons_value) == 0:
                 default_sons_index = CHILDREN_OPTIONS.index(0)
-            elif int(current_sons_value) in CHILDREN_OPTIONS: # Check if the number is in our list
+            elif int(current_sons_value) in CHILDREN_OPTIONS:
                 default_sons_index = CHILDREN_OPTIONS.index(int(current_sons_value))
-            else: # Fallback if value is out of bounds or unexpected
+            else:
                 default_sons_index = CHILDREN_OPTIONS.index("Unknown")
 
             children_son_input = st.selectbox(
@@ -368,19 +485,17 @@ def edit_contact_form(contact, index):
                 index=default_sons_index,
                 key=f"edit_children_son_{index}"
             )
-            # Convert "Unknown" to None, otherwise keep the number (0 will be kept as 0)
             children_son = None if children_son_input == "Unknown" else children_son_input
 
         with col_daughter:
-            # Determine initial index for "Children (Daughter)" selectbox
             current_daughters_value = contact.get("Children (Daughter)")
-            if pd.isna(current_daughters_value) or current_daughters_value is None: # Covers None and NaN
+            if pd.isna(current_daughters_value) or current_daughters_value is None:
                 default_daughters_index = CHILDREN_OPTIONS.index("Unknown")
-            elif int(current_daughters_value) == 0: # Explicitly check for 0
+            elif int(current_daughters_value) == 0:
                 default_daughters_index = CHILDREN_OPTIONS.index(0)
-            elif int(current_daughters_value) in CHILDREN_OPTIONS: # Check if the number is in our list
+            elif int(current_daughters_value) in CHILDREN_OPTIONS:
                 default_daughters_index = CHILDREN_OPTIONS.index(int(current_daughters_value))
-            else: # Fallback if value is out of bounds or unexpected
+            else:
                 default_daughters_index = CHILDREN_OPTIONS.index("Unknown")
 
             children_daughter_input = st.selectbox(
@@ -389,18 +504,21 @@ def edit_contact_form(contact, index):
                 index=default_daughters_index,
                 key=f"edit_children_daughter_{index}"
             )
-            # Convert "Unknown" to None, otherwise keep the number (0 will be kept as 0)
             children_daughter = None if children_daughter_input == "Unknown" else children_daughter_input
 
         status = st.selectbox("Status", ["Active", "Inactive"], index=["Active", "Inactive"].index(contact["Status"]), key=f"edit_status_{index}")
-        # Updated Tiering selectbox
-        current_tiering_index = TIERING_OPTIONS.index(contact["Tiering"]) if contact["Tiering"] in TIERING_OPTIONS else TIERING_OPTIONS.index("Untiered")
-        tiering = st.selectbox("Tiering", options=TIERING_OPTIONS, index=current_tiering_index, key=f"edit_tiering_{index}")
+        # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Status", "Status")
 
-        # UPDATED: Category options now include "Dy Chief" and "Others"
-        category_options = valid_categories # Use the global valid_categories list
-        current_category_index = category_options.index(contact["Category"]) if contact["Category"] in category_options else category_options.index("Others")
-        category = st.selectbox("Category", options=category_options, index=current_category_index, key=f"edit_category_{index}")
+        tiering = st.selectbox("Tiering", options=TIERING_OPTIONS, index=TIERING_OPTIONS.index(contact["Tiering"]) if contact["Tiering"] in TIERING_OPTIONS else TIERING_OPTIONS.index("Untiered"), key=f"edit_tiering_{index}")
+        add_bulk_checkboxes("Tiering", "Tiering")
+
+        # UPDATED: Sort category options in the selectbox
+        category_options_sorted = sorted(valid_categories)
+        current_category_index = category_options_sorted.index(contact["Category"]) if contact["Category"] in category_options_sorted else category_options_sorted.index("Others")
+        category = st.selectbox("Category", options=category_options_sorted, index=current_category_index, key=f"edit_category_{index}")
+        # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Category", "Category")
+
+        # === END BULK UPDATE FIELD SECTION ===
 
         # Comments (display only in edit form, actual adding done in view)
         st.markdown("---")
@@ -424,105 +542,152 @@ def edit_contact_form(contact, index):
 
         if submitted:
             if name and designation and country and company:
-                updated_contact = contact.copy()
+                updated_contact = contact.copy() # Make a copy to hold potential changes
 
-                changes = []
-                def track_change(field_name, old_val, new_val):
-                    # Safely get old_val, especially if it was missing before the column addition
+                changes_for_primary_contact = [] # Track changes for the currently edited contact
+                bulk_updates_to_apply = [] # Store bulk update instructions
+
+                # Helper to track changes for the primary contact and prepare bulk updates
+                def track_and_prepare_change(field_name, field_label, old_val, new_val):
+                    # Convert to comparable types for consistency (handle None/pd.NA)
                     old_val_to_compare = old_val if pd.notna(old_val) else None
                     new_val_to_compare = new_val if pd.notna(new_val) else None
 
-                    # Special handling for 'None' (Unknown) in display for history
+                    # Special handling for display in history, particularly for "Unknown" vs None
+                    old_val_str = str(old_val_to_compare) if old_val_to_compare is not None else "N/A"
+                    new_val_str = str(new_val_to_compare) if new_val_to_compare is not None else "N/A"
+
                     if field_name.startswith("Children"):
-                        # If a child count is 0, display '0', otherwise 'Unknown' for None
                         old_val_str = "Unknown" if old_val_to_compare is None else str(int(old_val_to_compare))
                         new_val_str = "Unknown" if new_val_to_compare is None else str(int(new_val_to_compare))
                     elif field_name == "Date of Birth":
-                        old_val_str = old_val_to_compare.strftime("%Y-%m-%d") if old_val_to_compare else "Unknown" # Changed N/A to Unknown for DOB
-                        new_val_str = new_val_to_compare.strftime("%Y-%m-%d") if new_val_to_compare else "Unknown" # Changed N/A to Unknown for DOB
-                        if old_val_str != new_val_str:
-                            changes.append(f"{field_name} changed from '{old_val_str}' to '{new_val_str}'")
-                        return new_val
+                        old_val_str = old_val_to_compare.strftime("%Y-%m-%d") if isinstance(old_val_to_compare, (date, datetime)) else "Unknown"
+                        new_val_str = new_val_to_compare.strftime("%Y-%m-%d") if isinstance(new_val_to_compare, (date, datetime)) else "Unknown"
                     elif field_name == "Known Age (Current Year)":
                         old_val_str = str(int(old_val_to_compare)) if pd.notna(old_val_to_compare) else "N/A"
                         new_val_str = str(int(new_val_to_compare)) if pd.notna(new_val_to_compare) else "N/A"
-                    elif field_name == "Comments": # Handle comments as a list
-                        old_val_str = "; ".join(old_val_to_compare) if old_val_to_compare else "N/A"
-                        new_val_str = "; ".join(new_val_to_compare) if new_val_to_compare else "N/A"
-                        if old_val_str != new_val_str: # Only append if the string representation differs
-                            changes.append(f"{field_name} changed from '{old_val_str}' to '{new_val_str}'")
-                        return new_val # Always return new_val for comments as it's modified externally
+                    elif field_name == "Comments": # Comments are handled separately, not changed here
+                        pass
+                    # For list-like fields (Festivities, Reception), compare string representation
+                    elif field_name in ["Festivities", "Reception"]:
+                        # Ensure comparison is done on processed string values
+                        old_val_str = str(old_val_to_compare)
+                        new_val_str = str(new_val_to_compare)
                     else:
+                        # For other fields, direct comparison for change
                         old_val_str = str(old_val_to_compare) if old_val_to_compare is not None else "N/A"
                         new_val_str = str(new_val_to_compare) if new_val_to_compare is not None else "N/A"
 
 
-                    if old_val_str != new_val_str:
-                        changes.append(f"{field_name} changed from '{old_val_str}' to '{new_val_str}'")
-                        return new_val
-                    return old_val # Return original old_val for unchanged fields
+                    if old_val_str != new_val_str: # Check if values are different for history/bulk
+                        changes_for_primary_contact.append(f"{field_label} changed from '{old_val_str}' to '{new_val_str}'")
 
-                updated_contact["Name"] = track_change("Name", contact["Name"], name)
-                # Track changes for new birth fields
-                updated_contact["Date of Birth"] = track_change("Date of Birth", contact.get("Date of Birth", None), final_date_of_birth)
-                updated_contact["Known Age (Current Year)"] = track_change("Known Age (Current Year)", contact.get("Known Age (Current Year)", None), final_known_age_current_year)
-
-
-                updated_contact["Designation"] = track_change("Designation", contact["Designation"], designation)
-                updated_contact["Country"] = track_change("Country", contact["Country"], country)
-                updated_contact["Company"] = track_change("Company", contact["Company"], company)
-                updated_contact["Phone Number"] = track_change("Phone Number", contact["Phone Number"], phone_number)
-                updated_contact["Office Number"] = track_change("Office Number", contact["Office Number"], office_number)
-                # Safely track change for Email Address
-                updated_contact["Email Address"] = track_change("Email Address", contact.get("Email Address", None), email_address)
-                updated_contact["Posting Date"] = track_change("Posting Date", contact["Posting Date"], posting_date)
-                updated_contact["Deposted Date"] = track_change("Deposted Date", contact["Deposted Date"], deposted_date)
-                updated_contact["Office Address"] = track_change("Office Address", contact["Office Address"], office_address)
-                updated_contact["Home Address"] = track_change("Home Address", contact["Home Address"], home_address)
-                updated_contact["Hobbies"] = track_change("Hobbies", contact["Hobbies"], hobbies)
-                updated_contact["Dietary Restrictions"] = track_change("Dietary Restrictions", contact["Dietary Restrictions"], dietary_restrictions)
-                updated_contact["Festivities"] = track_change("Festivities", contact["Festivities"], festivities_combined) # Use combined value
-                updated_contact["Vehicle"] = track_change("Vehicle", contact["Vehicle"], vehicle)
-                updated_contact["Golf"] = track_change("Golf", contact["Golf"], golf)
-                updated_contact["Golf Handicap"] = track_change("Golf Handicap", contact["Golf Handicap"], handicap)
-                updated_contact["Reception"] = track_change("Reception", contact["Reception"], reception_combined) # Use combined value
-                # Safely track change for Marital Status and Children
-                updated_contact["Marital Status"] = track_change("Marital Status", contact.get("Marital Status", None), marital_status)
-                # Store None or integer based on selectbox choice
-                updated_contact["Children (Son)"] = track_change("Children (Son)", contact.get("Children (Son)", None), children_son)
-                updated_contact["Children (Daughter)"] = track_change("Children (Daughter)", contact.get("Children (Daughter)", None), children_daughter)
+                        # If this field is eligible for bulk update and a checkbox was ticked
+                        if field_name in BULK_UPDATE_FIELDS:
+                            if bulk_apply_states.get(f"{field_name}_company"):
+                                bulk_updates_to_apply.append({"field": field_name, "value": new_val, "scope": "company"})
+                    return new_val
 
 
-                updated_contact["Status"] = track_change("Status", contact["Status"], status)
-                updated_contact["Tiering"] = track_change("Tiering", contact["Tiering"], tiering)
-                updated_contact["Category"] = track_change("Category", contact["Category"], category)
-                # Comments are updated via the separate comment box, not directly in this form.
-                # The 'track_change' for comments above only adds to history if the list contents change.
+                # --- Apply changes to the PRIMARY contact being edited ---
+                updated_contact["Name"] = track_and_prepare_change("Name", "Name", contact["Name"], name)
+                updated_contact["Date of Birth"] = track_and_prepare_change("Date of Birth", "Date of Birth", contact.get("Date of Birth", None), final_date_of_birth)
+                updated_contact["Known Age (Current Year)"] = track_and_prepare_change("Known Age (Current Year)", "Known Age (Current Year)", contact.get("Known Age (Current Year)", None), final_known_age_current_year)
+                updated_contact["Designation"] = track_and_prepare_change("Designation", "Designation", contact["Designation"], designation)
+                updated_contact["Country"] = track_and_prepare_change("Country", "Country", contact["Country"], country)
+                updated_contact["Company"] = track_and_prepare_change("Company", "Company", contact["Company"], company)
+                updated_contact["Phone Number"] = track_and_prepare_change("Phone Number", "Phone Number", contact["Phone Number"], phone_number)
+                updated_contact["Office Number"] = track_and_prepare_change("Office Number", "Office Number", contact["Office Number"], office_number)
+                updated_contact["Email Address"] = track_and_prepare_change("Email Address", "Email Address", contact.get("Email Address", None), email_address)
+                updated_contact["Posting Date"] = track_and_prepare_change("Posting Date", "Posting Date", contact["Posting Date"], posting_date)
+                updated_contact["Deposted Date"] = track_and_prepare_change("Deposted Date", "De-posted Date", contact["Deposted Date"], deposted_date)
+                updated_contact["Office Address"] = track_and_prepare_change("Office Address", "Office Address", contact["Office Address"], office_address)
+                updated_contact["Home Address"] = track_and_prepare_change("Home Address", "Home Address", contact["Home Address"], home_address)
+                updated_contact["Hobbies"] = track_and_prepare_change("Hobbies", "Hobbies", contact["Hobbies"], hobbies)
+                updated_contact["Dietary Restrictions"] = track_and_prepare_change("Dietary Restrictions", "Dietary Restrictions", contact["Dietary Restrictions"], dietary_restrictions)
+                updated_contact["Festivities"] = track_and_prepare_change("Festivities", "Festivities", contact["Festivities"], festivities_combined)
+                updated_contact["Vehicle"] = track_and_prepare_change("Vehicle", "Vehicle", contact["Vehicle"], vehicle)
+                updated_contact["Golf"] = track_and_prepare_change("Golf", "Golf", contact["Golf"], golf)
+                updated_contact["Golf Handicap"] = track_and_prepare_change("Golf Handicap", "Golf Handicap", contact["Golf Handicap"], handicap)
+                updated_contact["Reception"] = track_and_prepare_change("Reception", "Reception", contact["Reception"], reception_combined)
+                updated_contact["Marital Status"] = track_and_prepare_change("Marital Status", "Marital Status", contact.get("Marital Status", None), marital_status)
+                updated_contact["Children (Son)"] = track_and_prepare_change("Children (Son)", "Children (Sons)", contact.get("Children (Son)", None), children_son)
+                updated_contact["Children (Daughter)"] = track_and_prepare_change("Children (Daughter)", "Children (Daughters)", contact.get("Children (Daughter)", None), children_daughter)
+                updated_contact["Status"] = track_and_prepare_change("Status", "Status", contact["Status"], status)
+                updated_contact["Tiering"] = track_and_prepare_change("Tiering", "Tiering", contact["Tiering"], tiering)
+                updated_contact["Category"] = track_and_prepare_change("Category", "Category", contact["Category"], category)
 
 
+                # Handle photo upload
                 new_pic_bytes = None
                 if uploaded_file_photo is not None:
                     new_pic_bytes = uploaded_file_photo.read()
                     if contact["Photo"] is None:
-                        changes.append("Profile picture added")
+                        changes_for_primary_contact.append("Profile picture added")
                     elif new_pic_bytes != contact["Photo"]:
-                        changes.append("Profile picture updated")
+                        changes_for_primary_contact.append("Profile picture updated")
                     updated_contact["Photo"] = new_pic_bytes
 
-                if changes:
+                # --- Update Primary Contact's History and Data ---
+                if changes_for_primary_contact:
                     update_info = (f"Updated by {st.session_state.user_role} at {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}.<br>"
-                                   + "<br>".join(changes))
+                                   + "<br>".join(changes_for_primary_contact))
                     updated_contact["Last Updated By"] = st.session_state.user_role
                     updated_contact["Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p")
                     updated_contact["History"].append(update_info)
 
-                st.session_state.contacts_df.loc[index] = updated_contact
-                st.success("Contact updated successfully!")
+                st.session_state.contacts_df.loc[index] = updated_contact # Apply changes to primary contact
+
+
+                # --- Apply BULK UPDATES ---
+                for bulk_update_item in bulk_updates_to_apply:
+                    field_name = bulk_update_item["field"]
+                    new_value = bulk_update_item["value"]
+                    scope = bulk_update_item["scope"] # This will always be "company" now
+
+                    target_indices = pd.Index([]) # Initialize as empty index
+                    if scope == "company":
+                        target_indices = other_contacts_in_company.index
+                        scope_label = f"same company ({contact['Company']})"
+                    else:
+                        continue # Should not happen, but good for robustness
+
+                    if not target_indices.empty:
+                        for target_idx in target_indices:
+                            target_contact_row = st.session_state.contacts_df.loc[target_idx]
+                            old_value = target_contact_row[field_name]
+
+                            # Format old_value for history consistently
+                            old_value_for_history = str(old_value) if pd.notna(old_value) else "N/A"
+                            if field_name == "Date of Birth":
+                                old_value_for_history = old_value.strftime("%Y-%m-%d") if isinstance(old_value, (date, datetime)) else "Unknown"
+                            elif field_name == "Known Age (Current Year)":
+                                old_value_for_history = str(int(old_value)) if pd.notna(old_value) else "N/A"
+
+
+                            if old_value != new_value: # Only update if value is different
+                                st.session_state.contacts_df.loc[target_idx, field_name] = new_value
+
+                                # Add history entry for the bulk updated contact
+                                update_info_bulk = (
+                                    f"Bulk updated by {st.session_state.user_role} (from {contact['Name']}'s edit) "
+                                    f"at {get_gmt8_now().strftime('%d %b %y, %I:%M %p')}: "
+                                    f"'{field_name}' changed from '{old_value_for_history}' to '{new_value}' "
+                                    f"for {scope_label}."
+                                )
+                                st.session_state.contacts_df.loc[target_idx, "Last Updated By"] = st.session_state.user_role
+                                st.session_state.contacts_df.loc[target_idx, "Last Updated On"] = get_gmt8_now().strftime("%d %b %y, %I:%M %p")
+                                # Ensure History column is a list, append if it is
+                                if isinstance(st.session_state.contacts_df.loc[target_idx, "History"], list):
+                                    st.session_state.contacts_df.loc[target_idx, "History"].append(update_info_bulk)
+                                else: # If for some reason it's not a list, initialize and append
+                                    st.session_state.contacts_df.loc[target_idx, "History"] = [update_info_bulk]
+
+                st.success("Contact(s) updated successfully!")
                 st.session_state.editing_contact_index = None
                 st.rerun()
             else:
                 st.error("Please fill in all required fields (Name, Designation, Country, Company).")
-
 
 def get_tier_color(Tiering):
     tier_colors = {
@@ -601,7 +766,7 @@ def display_contact_card(contact, index):
                         placeholder_bytes = f.read()
                         image_base64 = base64.b64encode(placeholder_bytes).decode("utf-8")
                 except FileNotFoundError:
-                    image_base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+                    image_base64 = "iVBORw0KGgoAAAANgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
 
             # Determine children display string (UPDATED LOGIC)
@@ -612,20 +777,20 @@ def display_contact_card(contact, index):
 
             # Process sons
             # Only add to parts if the number is greater than 0
-            if pd.notna(num_sons_raw) and num_sons_raw is not None and int(num_sons_raw) > 0:
+            if pd.notnull(num_sons_raw) and num_sons_raw is not None and int(num_sons_raw) > 0:
                 num_sons = int(num_sons_raw)
                 children_parts.append(f"{num_sons} Son{'s' if num_sons > 1 else ''}")
 
             # Process daughters
             # Only add to parts if the number is greater than 0
-            if pd.notna(num_daughters_raw) and num_daughters_raw is not None and int(num_daughters_raw) > 0:
+            if pd.notnull(num_daughters_raw) and num_daughters_raw is not None and int(num_daughters_raw) > 0:
                 num_daughters = int(num_daughters_raw)
                 children_parts.append(f"{num_daughters} Daughter{'s' if num_daughters > 1 else ''}")
 
             # Determine final display string
             # If both are None/NaN, display "Unknown"
-            if (pd.isna(num_sons_raw) or num_sons_raw is None) and \
-               (pd.isna(num_daughters_raw) or num_daughters_raw is None):
+            if (pd.isnull(num_sons_raw) or num_sons_raw is None) and \
+               (pd.isnull(num_daughters_raw) or num_daughters_raw is None):
                 children_display = "Unknown"
             # If no children parts (meaning both are 0 or one is 0 and other is unknown/None)
             elif not children_parts:
@@ -765,7 +930,6 @@ def display_contact_card(contact, index):
                     st.session_state.editing_contact_index = index
                     st.rerun()
 
-
 # --- Add New Contact ➕ ---
 def add_new_contact_form():
     st.sidebar.title("Add New Contact")
@@ -832,16 +996,20 @@ def add_new_contact_form():
             "Or enter custom festivities (comma-separated):",
             value=""
         )
-        festivities_combined = process_multi_text_input(selected_festivities, custom_festivities_input)
+        festivities_combined = process_multi_text_input(selected_festivities, custom_festivities_input, "") # Pass empty string for new contact
 
 
-        # Reception Multiselect
-        reception = st.multiselect(
-            "Reception",
-            options=RECEPTION_OPTIONS,
+        # Reception Multiselect + Text Area
+        selected_reception = st.multiselect(
+            "Reception (select all that apply)",
+            options=RECEPTION_OPTIONS_MASTER,
             default=[]
         )
-        reception_combined = ", ".join(sorted(reception)) if reception else ""
+        custom_reception_input = st.text_area(
+            "Or enter custom reception types (comma-separated):",
+            value=""
+        )
+        reception_combined = process_multi_text_input(selected_reception, custom_reception_input, "") # Pass empty string for new contact
 
 
         vehicle = st.text_input("Vehicle")
@@ -879,8 +1047,10 @@ def add_new_contact_form():
         status = st.selectbox("Status", ["Active", "Inactive"], index=0)
         # Updated Tiering selectbox
         tiering = st.selectbox("Tiering", options=TIERING_OPTIONS, index=TIERING_OPTIONS.index("Untiered")) # Default to Untiered
-        # UPDATED: Category options now include "Dy Chief" and "Others", with "Others" as default
-        category = st.selectbox("Category", options=valid_categories, index=valid_categories.index("Others"))
+        # UPDATED: Category options now include new categories, with "Others" as default
+        # Sort valid_categories before using in selectbox
+        category_options_sorted = sorted(valid_categories)
+        category = st.selectbox("Category", options=category_options_sorted, index=category_options_sorted.index("Others"))
         profile_picture = st.file_uploader("Upload Profile Picture", type=["png", "jpg", "jpeg"])
 
         col_add, col_cancel = st.columns(2)
@@ -964,7 +1134,7 @@ def admin_actions():
         # Special handling for Date of Birth to export "Unknown"
         if "Date of Birth" in df_for_download.columns:
             df_for_download["Date of Birth"] = df_for_download["Date of Birth"].apply(
-                lambda x: x.strftime("%Y-%m-%d") if isinstance(x, (datetime, date)) else "Unknown" # Export "Unknown"
+                lambda x: x.strftime("%Y-%m-%d") if isinstance(x, (datetime, date)) else "Unknown"
             )
 
 
@@ -978,7 +1148,7 @@ def admin_actions():
         # Convert Known Age (Current Year) to string for download
         if "Known Age (Current Year)" in df_for_download.columns:
             df_for_download["Known Age (Current Year)"] = df_for_download["Known Age (Current Year)"].apply(
-                lambda x: str(int(x)) if pd.notna(x) else ""
+                lambda x: str(int(x)) if pd.notna(x) else ''
             )
 
         # Handle 'History' and 'Comments' for CSV export
@@ -1166,7 +1336,6 @@ def admin_actions():
                         st.error(f"Error reading file: {e}")
                         st.info("Please ensure your template is correctly filled and saved as .csv.")
 
-
 # --- 5. Search and Filter Functionality ---
 def search_and_filter(selected_category):
     st.sidebar.title("Other Filters")
@@ -1183,19 +1352,21 @@ def search_and_filter(selected_category):
 
     all_golf_options = ["Yes", "No"]
 
-    # Get all unique reception options from data
-    all_reception_options = []
-    # Iterate through each contact's 'Reception' string and split by comma
+    # Get ALL unique reception options from data for filtering, including custom ones
+    all_reception_options_from_data = []
     for reception_str in st.session_state.contacts_df["Reception"].dropna().unique():
-        all_reception_options.extend([r.strip() for r in str(reception_str).split(',') if r.strip()])
-    all_reception_options = sorted(list(set(all_reception_options))) # Get unique and sort
+        all_reception_options_from_data.extend([r.strip() for r in str(reception_str).split(',') if r.strip()])
+    # Combine with master list and sort
+    # Now that RECEPTION_OPTIONS_MASTER is defined globally, we can use it here
+    all_reception_options_for_filter = sorted(list(set(RECEPTION_OPTIONS_MASTER + all_reception_options_from_data)))
 
-    # Get all unique festivities options from data
-    all_festivities_options = []
-    # Iterate through each contact's 'Festivities' string and split by comma
+
+    # Get ALL unique festivities options from data for filtering, including custom ones
+    all_festivities_options_from_data = []
     for festivity_str in st.session_state.contacts_df["Festivities"].dropna().unique():
-        all_festivities_options.extend([f.strip() for f in str(festivity_str).split(',') if f.strip()])
-    all_festivities_options = sorted(list(set(all_festivities_options))) # Get unique and sort
+        all_festivities_options_from_data.extend([f.strip() for f in str(festivity_str).split(',') if f.strip()])
+    # Combine with common list and sort
+    all_festivities_options_for_filter = sorted(list(set(COMMON_FESTIVITIES + all_festivities_options_from_data)))
 
 
     selected_designations = st.sidebar.multiselect("Designation", options=all_designations, default=[])
@@ -1204,9 +1375,9 @@ def search_and_filter(selected_category):
     selected_tierings = st.sidebar.multiselect("Tiering", options=all_tierings, default=[])
     selected_golf = st.sidebar.multiselect("Golf", options=all_golf_options, default=[])
 
-    # New filters for Reception and Festivities
-    selected_reception = st.sidebar.multiselect("Reception", options=all_reception_options, default=[])
-    selected_festivities = st.sidebar.multiselect("Festivities", options=all_festivities_options, default=[])
+    # New filters for Reception and Festivities, using the dynamically generated options
+    selected_reception = st.sidebar.multiselect("Reception", options=all_reception_options_for_filter, default=[])
+    selected_festivities = st.sidebar.multiselect("Festivities", options=all_festivities_options_for_filter, default=[])
 
 
     filtered_df = st.session_state.contacts_df.copy()
@@ -1258,11 +1429,28 @@ def search_and_filter(selected_category):
         )
         filtered_df = filtered_df[mask]
 
-    filtered_df = filtered_df.sort_values(by="Name", ascending=True)
+    # --- NEW SORTING LOGIC ---
+    # 1. Create a temporary column for Designation Protocol Rank
+    filtered_df['Designation_Rank'] = filtered_df['Designation'].apply(get_designation_protocol_rank)
+
+    # 2. Sort by Country (alphabetical), then Company (alphabetical),
+    #    then Designation Rank (numerical protocol), then Designation (alphabetical for ties)
+    filtered_df = filtered_df.sort_values(
+        by=["Country", "Company", "Designation_Rank", "Designation"],
+        ascending=[True, True, True, True]
+    ).drop(columns=['Designation_Rank']) # Drop the helper column after sorting
+
     return filtered_df
 
 # --- 6. Main App Logic ---
 def main():
+    # Define RECEPTION_OPTIONS_MASTER globally here, as it depends on initial data load
+    # Initialize RECEPTION_OPTIONS_MASTER with some common options
+    # This list will be the *fixed* set of options presented in the multiselect for editing/adding
+    global RECEPTION_OPTIONS_MASTER
+    RECEPTION_OPTIONS_MASTER = ["ALSE", "NYR", "Client Event", "Networking Mixer", "Industry Fair", "Board Meeting", "Investor Call", "Tech Conference", "Project Review", "Book Launch", "Charity Event", "Parliament Session", "Review", "Others"]
+    RECEPTION_OPTIONS_MASTER.sort()
+
     if st.session_state.user_role is None:
         st.title("Welcome to the Contact Card App 👋")
         login()
@@ -1279,7 +1467,7 @@ def main():
 
         with col2:
             # UPDATED: Category options for buttons on main page
-            category_options = ["All", "Local Rep", "Overseas Rep", "Chief", "Dy Chief", "ID", "Others"]
+            category_options = ["All", "Chief", "Dy Chief", "ID", "Local Rep", "Overseas Rep", "Others"] # Manually sorted for button display
             cols = st.columns(len(category_options))
 
             for i, category_name in enumerate(category_options):
