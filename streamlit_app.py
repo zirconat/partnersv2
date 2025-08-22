@@ -820,7 +820,7 @@ def display_contact_card(contact, index):
                     box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.2);
                 ">
                     <div style="display: flex; align-items: center; gap: 20px;">
-                        <img src="data:image/png;base64,{image_base64}" style="border-radius: 50%; width: 100px; height: 100px; object-fit: cover;">
+                        <img src="data:image/png;base64,{image_base64}" style="border-radius: 50%; width: 150px; height: 150px; object-fit: cover;">
                         <div style="flex: 1;">
                             <h3 style="margin: 0; font-size: 20px; color: #000000;">
                                 {contact['Name']} {age_display}
