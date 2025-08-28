@@ -330,14 +330,15 @@ def edit_contact_form(contact, index):
         # MODIFIED add_bulk_checkboxes function to combine question and checkbox, always display names
         def add_bulk_checkboxes(field_name, field_label_for_display):
             if not other_contacts_in_company.empty:
-                bulk_apply_states[f"{field_name}_company"] = st.checkbox(
-                    f"Apply this **{field_label_for_display}** to {len(other_contacts_in_company)} other(s) in {contact['Company']}?",
-                    key=f"apply_{field_name}_company_{index}",
-                    help=f"Tick this to update this {field_label_for_display} for all listed contacts in {contact['Company']}."
-                )
-                st.markdown("###### Affected Contacts:")
-                for i, other_contact in enumerate(other_contacts_in_company.iterrows()):
-                    st.write(f"{i+1}. {other_contact[1]['Name']} ({other_contact[1]['Designation']})")
+                with st.container(border=True):
+                    bulk_apply_states[f"{field_name}_company"] = st.checkbox(
+                        f"Apply this **{field_label_for_display}** to {len(other_contacts_in_company)} other(s) in {contact['Company']}?",
+                        key=f"apply_{field_name}_company_{index}",
+                        help=f"Tick this to update this {field_label_for_display} for all listed contacts in {contact['Company']}."
+                    )
+                    st.markdown("###### Affected Contacts:")
+                    for i, other_contact in enumerate(other_contacts_in_company.iterrows()):
+                        st.write(f"{i+1}. {other_contact[1]['Name']} ({other_contact[1]['Designation']})")
             else:
                 st.info(f"No other contacts in {contact['Company']} to apply {field_label_for_display} to.")
 
