@@ -248,6 +248,13 @@ def get_designation_protocol_rank(designation_str):
             return rank
     return DEFAULT_DESIGNATION_RANK # If no keyword matches
 
+# --- NEW: To title case function ---
+def to_title_case(text):
+    return text.title() if text else ""
+
+    # --- NEW: To UPPER case function ---
+def to_upper_case(text):
+    return text.upper() if text else ""
 
 # --- 2. Contact Card Display and Editing ---
 def edit_contact_form(contact, index):
@@ -260,7 +267,7 @@ def edit_contact_form(contact, index):
     ]
 
     with st.form(key=f"edit_form_{index}"):
-        name = st.text_input("Name*", value=contact["Name"], key=f"edit_name_{index}")
+        name = to_title_case(st.text_input("Name*", value=contact["Name"], key=f"edit_name_{index}"))
 
         # New fields for Date of Birth / Known Age (Current Year) - MOVED UP
         col_dob, col_known_age = st.columns(2)
@@ -310,13 +317,13 @@ def edit_contact_form(contact, index):
             final_known_age_current_year = known_age_current_year
 
 
-        designation = st.text_input("Designation*", value=contact["Designation"], key=f"edit_designation_{index}")
+        designation = to_title_case(st.text_input("Designation*", value=contact["Designation"], key=f"edit_designation_{index}"))
 
         # Country Dropdown
         current_country_index = STANDARD_COUNTRIES.index(contact["Country"]) if contact["Country"] in STANDARD_COUNTRIES else 0
         country = st.selectbox("Country*", options=STANDARD_COUNTRIES, index=current_country_index, key=f"edit_country_{index}")
 
-        company = st.text_input("Company*", value=contact["Company"], key=f"edit_company_{index}")
+        company = to_title_case(st.text_input("Company*", value=contact["Company"], key=f"edit_company_{index}"))
         phone_number = st.text_input("Phone Number", value=contact["Phone Number"], key=f"edit_phone_number_{index}")
         office_number = st.text_input("Office Number", value=contact["Office Number"], key=f"edit_office_number_{index}")
 
@@ -387,10 +394,10 @@ def edit_contact_form(contact, index):
         home_address = st.text_area("Home Address", value=contact["Home Address"], key=f"edit_home_address_{index}")
         # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Home Address", "Home Address")
 
-        hobbies = st.text_input("Hobbies", value=contact["Hobbies"], key=f"edit_hobbies_{index}")
+        hobbies = to_title_case(st.text_input("Hobbies", value=contact["Hobbies"], key=f"edit_hobbies_{index}"))
         # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Hobbies", "Hobbies")
 
-        dietary_restrictions = st.text_input("Dietary Restrictions", value=contact["Dietary Restrictions"], key=f"edit_dietary_restrictions_{index}")
+        dietary_restrictions = to_title_case(st.text_input("Dietary Restrictions", value=contact["Dietary Restrictions"], key=f"edit_dietary_restrictions_{index}"))
         # Not in BULK_UPDATE_FIELDS: add_bulk_checkboxes("Dietary Restrictions", "Dietary Restrictions")
 
         # Festivities Multiselect + Text Area - UPDATED
@@ -408,16 +415,16 @@ def edit_contact_form(contact, index):
             default=default_selected_festivities,
             key=f"edit_festivities_select_{index}"
         )
-        custom_festivities_input = st.text_area(
+        custom_festivities_input = to_title_case(st.text_area(
             "Or enter custom festivities (comma-separated):",
             value=custom_festivities_text,
             key=f"edit_festivities_custom_{index}"
-        )
+        ))
         # Use the updated process_multi_text_input
         festivities_combined = process_multi_text_input(selected_festivities, custom_festivities_input, contact["Festivities"])
         add_bulk_checkboxes("Festivities", "Festivities") # Bulk checkbox for Festivities
 
-        vehicle = st.text_input("Vehicle", value=contact["Vehicle"], key=f"edit_vehicle_{index}")
+        vehicle = to_upper_case(st.text_input("Vehicle", value=contact["Vehicle"], key=f"edit_vehicle_{index}"))
         add_bulk_checkboxes("Vehicle", "Vehicle")
 
         # Golf selection field - Always visible
@@ -448,11 +455,11 @@ def edit_contact_form(contact, index):
             default=default_selected_reception,
             key=f"edit_reception_select_{index}"
         )
-        custom_reception_input = st.text_area(
+        custom_reception_input = to_title_case(st.text_area(
             "Or enter custom reception types (comma-separated):",
             value=custom_reception_text,
             key=f"edit_reception_custom_{index}"
-        )
+        ))
         # Use the updated process_multi_text_input
         reception_combined = process_multi_text_input(selected_reception, custom_reception_input, contact["Reception"])
         add_bulk_checkboxes("Reception", "Reception") # Bulk checkbox for Reception
@@ -956,7 +963,7 @@ def add_new_contact_form():
     st.sidebar.title("Add New Contact")
 
     with st.form(key="add_contact_form"):
-        name = st.text_input("Name*")
+        name = to_title_case(st.text_input("Name*"))
 
         # New fields for Date of Birth / Known Age (Current Year) - MOVED UP
         col_add_dob, col_add_known_age = st.columns(2)
@@ -991,12 +998,12 @@ def add_new_contact_form():
             final_known_age_current_year_add = known_age_current_year_add
 
 
-        designation = st.text_input("Designation*")
+        designation = to_title_case(st.text_input("Designation*"))
 
         # Country Dropdown
         country = st.selectbox("Country*", options=STANDARD_COUNTRIES, index=0)
 
-        company = st.text_input("Company*")
+        company = to_title_case(st.text_input("Company*"))
         phone_number = st.text_input("Phone Number")
         office_number = st.text_input("Office Number")
         email_address = st.text_input("Email Address")
@@ -1004,8 +1011,8 @@ def add_new_contact_form():
         deposted_date = st.date_input("De-posted Date", value=None)
         office_address = st.text_area("Office Address")
         home_address = st.text_area("Home Address")
-        hobbies = st.text_input("Hobbies")
-        dietary_restrictions = st.text_input("Dietary Restrictions")
+        hobbies = to_title_case(st.text_input("Hobbies"))
+        dietary_restrictions = to_title_case(st.text_input("Dietary Restrictions"))
 
         # Festivities Multiselect + Text Area
         selected_festivities = st.multiselect(
@@ -1013,10 +1020,10 @@ def add_new_contact_form():
             options=COMMON_FESTIVITIES,
             default=[]
         )
-        custom_festivities_input = st.text_area(
+        custom_festivities_input = to_title_case(st.text_area(
             "Or enter custom festivities (comma-separated):",
             value=""
-        )
+        ))
         festivities_combined = process_multi_text_input(selected_festivities, custom_festivities_input, "") # Pass empty string for new contact
 
 
@@ -1026,14 +1033,14 @@ def add_new_contact_form():
             options=RECEPTION_OPTIONS_MASTER,
             default=[]
         )
-        custom_reception_input = st.text_area(
+        custom_reception_input = to_title_case(st.text_area(
             "Or enter custom reception types (comma-separated):",
             value=""
-        )
+        ))
         reception_combined = process_multi_text_input(selected_reception, custom_reception_input, "") # Pass empty string for new contact
 
 
-        vehicle = st.text_input("Vehicle")
+        vehicle = to_upper_case(st.text_input("Vehicle"))
 
         # Golf selection field - Always visible
         golf = st.selectbox("Golf", ["Yes", "No"], index=1) # Default to No
