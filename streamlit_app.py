@@ -759,6 +759,7 @@ def display_contact_card(contact, index):
             image_bytes = contact['Photo']
             if image_bytes is not None and isinstance(image_bytes, bytes):
                 image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+                
             else:
                 try:
                     # Use a default placeholder image if "placeholder.jpg" is present in the assets folder
@@ -811,65 +812,84 @@ def display_contact_card(contact, index):
             # The border color should still match one of the gradient colors
             card_border_color = "#e0e0e0" # A very light gray/silver for the border
 
-            st.markdown(
-                f"""
-                <div style="
-                    border-radius: 10px;
-                    border: 1px solid {card_border_color};
-                    padding: 15px;
-                    background: {card_background_gradient};
-                    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.2);
-                ">
-                    <div style="display: flex; align-items: center; gap: 20px;">
-                        <img src="data:image/png;base64,{image_base64}" style="border-radius: 50%; width: 150px; height: 150px; object-fit: cover;">
-                        <div style="flex: 1;">
-                            <h3 style="margin: 0; font-size: 20px; color: #000000;">
-                                {contact['Name']} {age_display}
-                            </h3>
-                            <i><h4 style="margin: 0; font-size: 16px; color: #000000;">
-                                {contact['Designation']} , {contact['Company']}
-                            </h4></i>
+            # Use columns to separate the image from the rest of the card content
+            col1, col2 = st.columns([0.5, 4], gap="small")
+
+            with col1:
+                
+                # Now, display the profile picture using your desired CSS
+                st.markdown(f"""
+                    <img src="data:image/png;base64,{image_base64}" style="border-radius: 100%; width: 150px; height: 150px; object-fit: cover;">
+                """, unsafe_allow_html=True)
+                st.write("")
+
+                # Place the popover component here, outside the main markdown block
+                with st.popover("View Photo"):
+                    st.image(image_bytes if image_bytes else "https://placehold.co/600x600/A0A0A0/FFFFFF?text=No+Photo", use_container_width=True)
+
+
+            with col2:
+                # Original HTML content for the rest of the card, but without the image tag
+                st.markdown(
+                    f"""
+                    <div style="
+                        border-radius: 10px;
+                        border: 1px solid {card_border_color};
+                        padding: 15px;
+                        background: {card_background_gradient};
+                        box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.2);
+                        margin-left: -20px; /* Adjust to align with the popover/image */
+                    ">
+                        <div style="display: flex; align-items: center; gap: 20px;">
+                            <div style="flex: 1;">
+                                <h3 style="margin: 0; font-size: 20px; color: #000000;">
+                                    {contact.get('Name', 'N/A')} {age_display}
+                                </h3>
+                                <i><h4 style="margin: 0; font-size: 16px; color: #000000;">
+                                    {contact.get('Designation', 'N/A')}, {contact.get('Company', 'N/A')}
+                                </h4></i>
+                            </div>
+                            <div style="background-color: {get_tier_color(contact.get('Tiering'))}; color: white; padding: 5px 10px; border-radius: 5px; text-align: center;">
+                                <b>Tier:</b> {contact.get('Tiering', 'N/A')}
+                            </div>
+                            <div style="background-color: {get_status_color(contact.get('Status'))}; color: white; padding: 5px 10px; border-radius: 5px; text-align: center;">
+                                {contact.get('Status', 'N/A')}
+                            </div>
+                            <div style="background-color: #6a0dad; color: white; padding: 5px 10px; border-radius: 5px; text-align: center;">
+                                {contact.get('Category', 'N/A')}
+                            </div>
                         </div>
-                        <div style="background-color: {get_tier_color(contact['Tiering'])}; color: white; padding: 5px 10px; border-radius: 5px; text-align: center;">
-                            <b>Tier:</b> {contact['Tiering']}
-                        </div>
-                        <div style="background-color: {get_status_color(contact['Status'])}; color: white; padding: 5px 10px; border-radius: 5px; text-align: center;">
-                            {contact['Status']}
-                        </div>
-                        <div style="background-color: #6a0dad; color: white; padding: 5px 10px; border-radius: 5px; text-align: center;">
-                            {contact['Category']}
+                        <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
+                            <div style="flex: 1; min-width: 200px; color: #000000">
+                                <p><b>Date of Birth:</b> {formatted_dob}</p>
+                                <p><b>Country:</b> {contact.get('Country', 'N/A')}</p>
+                                <p><b>Phone Number:</b> {contact.get('Phone Number', 'N/A')}</p>
+                                <p><b>Office Number:</b> {contact.get('Office Number', 'N/A')}</p>
+                                <p><b>Email Address:</b> {contact.get('Email Address', 'N/A')}</p>
+                                <p><b>Address:</b> {contact.get('Office Address', 'N/A')}</p>
+                                <p><b>Home Address:</b> {contact.get('Home Address', 'N/A')}</p>
+                            </div>
+                            <div style="flex: 1; min-width: 200px; color: #000000">
+                                <p><b>Posting Date:</b> {formatted_posting_date}</p>
+                                <p><b>De-posted Date:</b> {formatted_deposted_date}</p>
+                                <p><b>Marital Status:</b> {contact.get('Marital Status', 'N/A')}</p>
+                                <p><b>Children:</b> {children_display}</p>
+                                <p><b>Vehicle(s):</b> {contact.get('Vehicle', 'N/A')}</p>
+                                <p><b>Golf:</b> {contact.get('Golf', 'N/A')}</p>
+                                <p><b>Golf Handicap:</b> {contact.get('Golf Handicap', 'N/A')}</p>
+                            </div>
+                            <div style="flex: 1; min-width: 200px; color: #000000">
+                                <p><b>Hobbies:</b> {contact.get('Hobbies', 'N/A')}</p>
+                                <p><b>Dietary Restrictions:</b> {contact.get('Dietary Restrictions', 'N/A')}</p>
+                                <p><b>Reception:</b> {contact.get('Reception', 'N/A')}</p>
+                                <p><b>Festivity:</b> {contact.get('Festivities', 'N/A')}</p>
+                            </div>
                         </div>
                     </div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
-                        <div style="flex: 1; min-width: 200px; color: #000000">
-                            <p><b>Date of Birth:</b> {formatted_dob}</p>
-                            <p><b>Country:</b> {contact['Country']}</p>
-                            <p><b>Phone Number:</b> {contact['Phone Number']}</p>
-                            <p><b>Office Number:</b> {contact['Office Number']}</p>
-                            <p><b>Email Address:</b> {contact.get('Email Address', 'N/A')}</p>
-                            <p><b>Address:</b> {contact['Office Address']}</p>
-                            <p><b>Home Address:</b> {contact['Home Address']}</p>
-                        </div>
-                        <div style="flex: 1; min-width: 200px; color: #000000">
-                            <p><b>Posting Date:</b> {formatted_posting_date}</p>
-                            <p><b>De-posted Date:</b> {formatted_deposted_date}</p>
-                            <p><b>Marital Status:</b> {contact.get('Marital Status', 'N/A')}</p>
-                            <p><b>Children:</b> {children_display}</p>
-                            <p><b>Vehicle(s):</b> {contact['Vehicle']}</p>
-                            <p><b>Golf:</b> {contact['Golf']}</p>
-                            <p><b>Golf Handicap:</b> {contact['Golf Handicap']}</p>
-                        </div>
-                        <div style="flex: 1; min-width: 200px; color: #000000">
-                            <p><b>Hobbies:</b> {contact['Hobbies']}</p>
-                            <p><b>Dietary Restrictions:</b> {contact['Dietary Restrictions']}</p>
-                            <p><b>Reception:</b> {contact['Reception']}</p>
-                            <p><b>Festivity:</b> {contact['Festivities']}</p>
-                        </div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+                    """,
+                    unsafe_allow_html=True
+                )
+            # --- End of Refactored Card Display ---
 
             # Add a small vertical space here
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
